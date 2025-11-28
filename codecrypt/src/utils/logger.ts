@@ -91,6 +91,84 @@ export class Logger {
   }
 
   /**
+   * Log a section header for better organization
+   */
+  section(title: string): void {
+    const separator = '='.repeat(80);
+    this.outputChannel.appendLine('');
+    this.outputChannel.appendLine(separator);
+    this.outputChannel.appendLine(`  ${title}`);
+    this.outputChannel.appendLine(separator);
+    this.outputChannel.appendLine('');
+  }
+
+  /**
+   * Log a subsection header
+   */
+  subsection(title: string): void {
+    const separator = '-'.repeat(80);
+    this.outputChannel.appendLine('');
+    this.outputChannel.appendLine(`  ${title}`);
+    this.outputChannel.appendLine(separator);
+  }
+
+  /**
+   * Log a transformation event
+   */
+  transformation(action: string, details: Record<string, any>): void {
+    this.info(`[TRANSFORMATION] ${action}`);
+    for (const [key, value] of Object.entries(details)) {
+      this.outputChannel.appendLine(`    ${key}: ${value}`);
+    }
+  }
+
+  /**
+   * Log a dependency update
+   */
+  dependencyUpdate(
+    packageName: string,
+    fromVersion: string,
+    toVersion: string,
+    status: 'pending' | 'success' | 'failed' | 'rolled-back'
+  ): void {
+    const emoji = {
+      pending: '⏳',
+      success: '✅',
+      failed: '❌',
+      'rolled-back': '↩️'
+    }[status];
+    
+    this.info(`${emoji} Dependency Update: ${packageName}`);
+    this.outputChannel.appendLine(`    From: ${fromVersion}`);
+    this.outputChannel.appendLine(`    To: ${toVersion}`);
+    this.outputChannel.appendLine(`    Status: ${status}`);
+  }
+
+  /**
+   * Log validation results
+   */
+  validation(type: 'compilation' | 'tests', status: 'running' | boolean, details?: string): void {
+    let emoji: string;
+    let statusText: string;
+    
+    if (status === 'running') {
+      emoji = '🔄';
+      statusText = 'RUNNING';
+    } else if (status === true) {
+      emoji = '✅';
+      statusText = 'PASSED';
+    } else {
+      emoji = '❌';
+      statusText = 'FAILED';
+    }
+    
+    this.info(`${emoji} Validation (${type}): ${statusText}`);
+    if (details) {
+      this.outputChannel.appendLine(`    Details: ${details}`);
+    }
+  }
+
+  /**
    * Internal logging method
    */
   private log(level: string, message: string, ...args: any[]): void {

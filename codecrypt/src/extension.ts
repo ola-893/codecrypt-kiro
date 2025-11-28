@@ -11,6 +11,7 @@ import { analyzeRepositoryDeath, generateDeathCertificate } from './services/dea
 import { analyzeDependencies } from './services/dependencyAnalysis';
 import { generateResurrectionPlan } from './services/resurrectionPlanning';
 import { ResurrectionContext, DependencyReport } from './types';
+import { withProgressReporter, ResurrectionStage } from './services/progress';
 
 /**
  * Extension activation
@@ -19,7 +20,8 @@ import { ResurrectionContext, DependencyReport } from './types';
 export function activate(context: vscode.ExtensionContext) {
 	// Initialize logger
 	const logger = initializeLogger('CodeCrypt');
-	logger.info('🧟 CodeCrypt extension activated');
+	logger.section('🧟 CODECRYPT EXTENSION ACTIVATED');
+	logger.info('CodeCrypt is ready to resurrect your code!');
 
 	// Register the resurrect repository command
 	const resurrectCommand = vscode.commands.registerCommand(
@@ -50,7 +52,8 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				logger.info(`Starting resurrection for: ${repoUrl}`);
+				logger.section('🧟 STARTING RESURRECTION PROCESS');
+				logger.info(`Repository URL: ${repoUrl}`);
 				
 				// Initialize resurrection context
 				const context: ResurrectionContext = {
@@ -60,46 +63,46 @@ export function activate(context: vscode.ExtensionContext) {
 					transformationLog: []
 				};
 				
-				// Show progress notification
-				await vscode.window.withProgress(
-					{
-						location: vscode.ProgressLocation.Notification,
-						title: '🧟 CodeCrypt Resurrection',
-						cancellable: false
-					},
-					async (progress) => {
+				// Execute resurrection with enhanced progress reporting
+				await withProgressReporter(
+					'🧟 CodeCrypt Resurrection',
+					async (reporter) => {
 						try {
-							// Parse GitHub URL
-							progress.report({ message: 'Parsing repository URL...' });
+							// Stage 1: Initialize and parse URL
+							logger.subsection('Stage 1: Initialization');
+							reporter.reportStage(ResurrectionStage.INITIALIZING, 'Parsing repository URL');
 							const { owner, repo } = parseGitHubUrl(context.repoUrl);
 							logger.info(`Parsed repository: ${owner}/${repo}`);
 							
 							// Fetch repository metadata
-							progress.report({ message: 'Fetching repository metadata...' });
+							reporter.reportProgress('Fetching repository metadata');
 							const metadata = await fetchRepositoryMetadata(owner, repo);
 							logger.info(`Repository: ${metadata.fullName}`);
 							logger.info(`Language: ${metadata.language || 'Unknown'}`);
 							logger.info(`Stars: ${metadata.stars}`);
 							logger.info(`Last pushed: ${metadata.lastPushedAt}`);
 							
-							// Clone repository
-							progress.report({ message: 'Cloning repository...' });
+							// Stage 2: Clone repository
+							logger.subsection('Stage 2: Cloning Repository');
+							reporter.reportStage(ResurrectionStage.CLONING, `Cloning ${owner}/${repo}`);
 							const repoPath = await cloneRepository(owner, repo);
 							context.repoPath = repoPath;
 							logger.info(`Repository cloned to: ${repoPath}`);
 							
-							// Analyze repository death
-							progress.report({ message: 'Analyzing repository activity...' });
+							// Stage 3: Analyze repository
+							logger.subsection('Stage 3: Death Detection & Analysis');
+							reporter.reportStage(ResurrectionStage.ANALYZING, 'Checking repository activity');
 							const deathAnalysis = await analyzeRepositoryDeath(repoPath);
 							context.isDead = deathAnalysis.isDead;
 							context.lastCommitDate = deathAnalysis.lastCommitDate;
 							
+							const statusEmoji = deathAnalysis.isDead ? '💀' : '✅';
 							logger.info(`Death analysis: ${deathAnalysis.isDead ? 'DEAD' : 'ALIVE'}`);
 							logger.info(`Last commit: ${deathAnalysis.lastCommitDate.toISOString()}`);
 							logger.info(`Days since last commit: ${deathAnalysis.daysSinceLastCommit}`);
 							
 							// Generate death certificate
-							progress.report({ message: 'Generating death certificate...' });
+							reporter.reportProgress('Generating death certificate');
 							const certificatePath = await generateDeathCertificate(
 								repoPath,
 								metadata.fullName,
@@ -108,7 +111,8 @@ export function activate(context: vscode.ExtensionContext) {
 							logger.info(`Death certificate generated: ${certificatePath}`);
 							
 							// Analyze dependencies
-							progress.report({ message: 'Analyzing dependencies...' });
+							logger.subsection('Dependency Analysis');
+							reporter.reportProgress('Analyzing dependencies');
 							let dependencyReport: DependencyReport | undefined;
 							
 							try {
@@ -122,11 +126,13 @@ export function activate(context: vscode.ExtensionContext) {
 								logger.info(`  Outdated: ${dependencyReport.outdatedDependencies}`);
 								logger.info(`  Vulnerable: ${dependencyReport.vulnerableDependencies}`);
 								
-								progress.report({ message: 'Dependency analysis complete!' });
-								
-								// Generate resurrection plan if there are dependencies to update
+								// Stage 4: Generate resurrection plan
 								if (dependencyReport.outdatedDependencies > 0 || dependencyReport.vulnerableDependencies > 0) {
-									progress.report({ message: 'Generating resurrection plan...' });
+									logger.subsection('Stage 4: Resurrection Planning');
+									reporter.reportStage(
+										ResurrectionStage.PLANNING,
+										`Planning updates for ${dependencyReport.outdatedDependencies} dependencies`
+									);
 									
 									const resurrectionPlan = generateResurrectionPlan(dependencyReport);
 									context.resurrectionPlan = resurrectionPlan;
@@ -136,26 +142,30 @@ export function activate(context: vscode.ExtensionContext) {
 									logger.info(`  Security patches: ${resurrectionPlan.securityPatches}`);
 									
 									// Create resurrection branch
-									progress.report({ message: 'Creating resurrection branch...' });
+									reporter.reportProgress('Creating resurrection branch');
 									const branchName = await createResurrectionBranch(repoPath);
 									context.resurrectionBranch = branchName;
 									
 									logger.info(`Resurrection branch created: ${branchName}`);
-									progress.report({ message: 'Resurrection planning complete!' });
 								} else {
 									logger.info('No updates needed - repository is up to date');
-									progress.report({ message: 'Repository is up to date!' });
+									reporter.reportProgress('Repository is up to date');
 								}
 								
 							} catch (error) {
 								logger.warn('Dependency analysis failed - repository may not be npm-based', error);
-								progress.report({ message: 'Skipping dependency analysis (not an npm project)' });
+								reporter.reportProgress('Skipping dependency analysis (not an npm project)');
 							}
+							
+							// Report completion
+							logger.subsection('Resurrection Process Complete');
+							reporter.reportComplete(true, `${statusEmoji} Analysis complete`);
 							
 							// TODO: Implement automated resurrection in subsequent tasks
 							
 						} catch (error) {
 							logger.error('Failed during resurrection process', error);
+							reporter.reportComplete(false, 'Resurrection failed');
 							throw error;
 						}
 					}

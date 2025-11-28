@@ -39,7 +39,13 @@ export async function updateDependency(
   repoPath: string,
   planItem: ResurrectionPlanItem
 ): Promise<UpdateResult> {
-  logger.info(`Updating ${planItem.packageName} from ${planItem.currentVersion} to ${planItem.targetVersion}`);
+  // Log dependency update start with enhanced formatting
+  logger.dependencyUpdate(
+    planItem.packageName,
+    planItem.currentVersion,
+    planItem.targetVersion,
+    'pending'
+  );
   
   try {
     // Read package.json
@@ -102,6 +108,14 @@ export async function updateDependency(
     
     logger.info(`Changes committed: ${commitHash}`);
     
+    // Log successful update
+    logger.dependencyUpdate(
+      planItem.packageName,
+      planItem.currentVersion,
+      planItem.targetVersion,
+      'success'
+    );
+    
     return {
       success: true,
       packageName: planItem.packageName,
@@ -111,6 +125,14 @@ export async function updateDependency(
     
   } catch (error: any) {
     logger.error(`Failed to update ${planItem.packageName}`, error);
+    
+    // Log failed update
+    logger.dependencyUpdate(
+      planItem.packageName,
+      planItem.currentVersion,
+      planItem.targetVersion,
+      'failed'
+    );
     
     return {
       success: false,

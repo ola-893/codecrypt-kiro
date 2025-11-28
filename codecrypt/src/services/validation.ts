@@ -64,7 +64,7 @@ async function hasTestScript(repoPath: string): Promise<boolean> {
  * Run TypeScript compilation check
  */
 async function runCompilationCheck(repoPath: string): Promise<{ success: boolean; output: string }> {
-  logger.info('Running TypeScript compilation check...');
+  logger.validation('compilation', 'running');
   
   try {
     const output = execSync('npx tsc --noEmit', {
@@ -74,12 +74,12 @@ async function runCompilationCheck(repoPath: string): Promise<{ success: boolean
       timeout: 60000 // 1 minute timeout
     });
     
-    logger.info('Compilation check passed');
+    logger.validation('compilation', true);
     return { success: true, output };
     
   } catch (error: any) {
     const output = error.stdout || error.stderr || error.message;
-    logger.error('Compilation check failed', error);
+    logger.validation('compilation', false, output.substring(0, 500));
     return { success: false, output };
   }
 }
@@ -88,7 +88,7 @@ async function runCompilationCheck(repoPath: string): Promise<{ success: boolean
  * Run test suite
  */
 async function runTests(repoPath: string): Promise<{ success: boolean; output: string }> {
-  logger.info('Running test suite...');
+  logger.validation('tests', 'running');
   
   try {
     const output = execSync('npm test', {
@@ -98,12 +98,12 @@ async function runTests(repoPath: string): Promise<{ success: boolean; output: s
       timeout: 120000 // 2 minute timeout
     });
     
-    logger.info('Tests passed');
+    logger.validation('tests', true);
     return { success: true, output };
     
   } catch (error: any) {
     const output = error.stdout || error.stderr || error.message;
-    logger.error('Tests failed', error);
+    logger.validation('tests', false, output.substring(0, 500));
     return { success: false, output };
   }
 }
