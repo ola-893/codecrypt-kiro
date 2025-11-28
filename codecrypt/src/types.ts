@@ -255,3 +255,68 @@ export interface ASTAnalysis {
   /** Timestamp when analysis was performed */
   analyzedAt: Date;
 }
+
+/**
+ * LLM semantic insight for a code snippet
+ */
+export interface LLMInsight {
+  /** File path being analyzed */
+  filePath: string;
+  /** Developer intent extracted from code */
+  developerIntent: string;
+  /** Domain concepts identified */
+  domainConcepts: string[];
+  /** Idiomatic patterns found */
+  idiomaticPatterns: string[];
+  /** Anti-patterns identified */
+  antiPatterns: string[];
+  /** Modernization suggestions */
+  modernizationSuggestions: string[];
+  /** Confidence score (0-1) */
+  confidence: number;
+}
+
+/**
+ * Complete LLM analysis for a repository
+ */
+export interface LLMAnalysis {
+  /** Insights for each analyzed file */
+  insights: LLMInsight[];
+  /** Overall project intent/purpose */
+  projectIntent?: string;
+  /** Key domain concepts across the project */
+  keyDomainConcepts: string[];
+  /** Overall modernization strategy */
+  modernizationStrategy?: string;
+  /** Timestamp when analysis was performed */
+  analyzedAt: Date;
+}
+
+/**
+ * Combined analysis merging AST and LLM insights
+ */
+export interface HybridAnalysis {
+  /** AST structural analysis */
+  astAnalysis: ASTAnalysis;
+  /** LLM semantic analysis */
+  llmAnalysis: LLMAnalysis;
+  /** Combined insights for planning */
+  combinedInsights: {
+    /** Files prioritized for modernization */
+    priorityFiles: Array<{
+      filePath: string;
+      reason: string;
+      priority: number;
+    }>;
+    /** Recommended refactoring opportunities */
+    refactoringOpportunities: Array<{
+      filePath: string;
+      description: string;
+      impact: 'low' | 'medium' | 'high';
+    }>;
+    /** Overall modernization recommendations */
+    recommendations: string[];
+  };
+  /** Timestamp when combined analysis was performed */
+  analyzedAt: Date;
+}

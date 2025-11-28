@@ -16,7 +16,8 @@ export enum SecureConfigKey {
   GITHUB_TOKEN = 'codecrypt.github.token',
   NPM_TOKEN = 'codecrypt.npm.token',
   MCP_GITHUB_TOKEN = 'codecrypt.mcp.github.token',
-  MCP_REGISTRY_TOKEN = 'codecrypt.mcp.registry.token'
+  MCP_REGISTRY_TOKEN = 'codecrypt.mcp.registry.token',
+  ANTHROPIC_API_KEY = 'codecrypt.anthropicApiKey'
 }
 
 /**
@@ -161,6 +162,54 @@ export class SecureConfigManager {
       await this.storeSecret(SecureConfigKey.GITHUB_TOKEN, token);
       vscode.window.showInformationMessage('GitHub token stored securely');
       return token;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get Anthropic API key with fallback to environment variable
+   * @returns Anthropic API key or undefined
+   */
+  async getAnthropicApiKey(): Promise<string | undefined> {
+    // First try to get from secure storage
+    let apiKey = await this.getSecret(SecureConfigKey.ANTHROPIC_API_KEY);
+    
+    if (!apiKey) {
+      // Fallback to environment variable
+      apiKey = process.env.ANTHROPIC_API_KEY;
+      if (apiKey) {
+        logger.info('Using Anthropic API key from environment variable');
+      }
+    }
+    
+    return apiKey;
+  }
+
+  /**
+   * Prompt user for Anthropic API key and store it securely
+   */
+  async promptAndStoreAnthropicApiKey(): Promise<string | undefined> {
+    const apiKey = await vscode.window.showInputBox({
+      prompt: 'Enter your Anthropic API Key',
+      password: true,
+      placeHolder: 'sk-ant-api03-...',
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        if (!value) {
+          return 'API key is required';
+        }
+        if (!value.startsWith('sk-ant-')) {
+          return 'Invalid Anthropic API key format';
+        }
+        return null;
+      }
+    });
+
+    if (apiKey) {
+      await this.storeSecret(SecureConfigKey.ANTHROPIC_API_KEY, apiKey);
+      vscode.window.showInformationMessage('Anthropic API key stored securely');
+      return apiKey;
     }
 
     return undefined;
