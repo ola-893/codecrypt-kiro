@@ -1,116 +1,79 @@
-# Requirements Document
+# MVP Resurrection Flow: Requirements
 
-## Introduction
+## 1. Introduction
 
-The MVP Resurrection Flow is the core feature of CodeCrypt that enables automated analysis and modernization of abandoned GitHub repositories. This minimal viable product focuses on JavaScript/TypeScript repositories, providing essential functionality to detect repository abandonment, analyze dependencies, and generate actionable resurrection reports. The system will accept a GitHub repository URL, clone and analyze the codebase, identify outdated dependencies, and produce a comprehensive report with modernization recommendations.
+This document outlines the functional and non-functional requirements for the Minimum Viable Product (MVP) of the CodeCrypt Resurrection Flow. The primary goal of the MVP is to successfully execute an end-to-end resurrection of a simple, abandoned JavaScript-based (Node.js) repository.
 
-## Glossary
+## 2. User Roles & Personas
 
-- **Repository Analyzer**: The component that clones and examines repository metadata and structure
-- **Dependency Scanner**: The component that identifies and catalogs all project dependencies
-- **Version Checker**: The component that compares current dependency versions against latest available versions
-- **Death Score Calculator**: The component that computes a numerical assessment of repository abandonment
-- **Resurrection Report Generator**: The component that produces the final analysis document
-- **Package Manager**: Tools like npm, yarn, or pnpm that manage JavaScript dependencies
-- **Death Certificate**: A document detailing why and when a repository was abandoned
-- **Outdated Dependency**: A package dependency that has newer versions available
-- **Security Vulnerability**: A known security issue in a dependency version
+- **Developer (Primary User):** An individual developer who wants to resurrect a specific, public, open-source project from GitHub.
 
-## Requirements
+## 3. Functional Requirements
 
-### Requirement 1
+### FR-001: Repository Input
+The system shall accept a public GitHub repository URL as the primary input.
 
-**User Story:** As a developer, I want to provide a GitHub repository URL, so that the system can analyze it for resurrection potential.
+### FR-002: Death Detection
+- The system shall clone the specified repository into a temporary workspace.
+- The system shall analyze the repository's commit history and determine the date of the last commit.
+- The system shall classify a repository as "dead" if the last commit is older than two years.
+- The system shall generate a "Death Certificate" in Markdown format, including the time of death (last commit date) and cause of death (e.g., "Lack of recent activity").
 
-#### Acceptance Criteria
+### FR-003: Dependency Analysis (npm)
+- The system shall detect and parse a `package.json` file.
+- The system shall identify all `dependencies` and `devDependencies`.
+- For each dependency, the system shall query the npm registry to find its latest stable version.
+- The system shall identify all dependencies that are outdated (i.e., not on the latest stable version).
+- The system shall check for known security vulnerabilities in the current dependency versions.
 
-1. WHEN a user provides a GitHub repository URL THEN the Repository Analyzer SHALL validate the URL format
-2. WHEN a valid GitHub URL is provided THEN the Repository Analyzer SHALL clone the repository to a temporary workspace
-3. WHEN the repository cannot be accessed THEN the Repository Analyzer SHALL return an error message indicating the access failure
-4. WHEN the repository is successfully cloned THEN the Repository Analyzer SHALL extract basic metadata including last commit date and repository size
-5. THE Repository Analyzer SHALL support both HTTPS and SSH GitHub URL formats
+### FR-004: Resurrection Planning
+- The system shall create a resurrection plan that includes:
+  - A list of all outdated dependencies to be updated.
+  - The target version for each update (latest stable).
+  - A prioritized list of security vulnerabilities to be patched via dependency updates.
+- For the MVP, the plan will follow a "moderate" strategy: update all packages to the latest stable version, prioritizing security patches.
 
-### Requirement 2
+### FR-005: Automated Resurrection
+- The system shall create a new Git branch named `codecrypt/resurrection-<timestamp>`.
+- The system shall iteratively update each outdated dependency:
+  - Modify the `package.json` file with the new version.
+  - Run `npm install` (or equivalent) to install the updated package.
+  - After each update, commit the changes to the resurrection branch with a descriptive message (e.g., "feat: Update <package> to vX.Y.Z").
+- The system shall be able to apply simple, predefined code transformations to fix breaking changes (e.g., updating a renamed function call).
 
-**User Story:** As a developer, I want the system to detect if a repository is abandoned, so that I can focus resurrection efforts on truly dead projects.
+### FR-006: Validation
+- After each dependency update and code transformation, the system shall attempt to compile the code (if applicable, e.g., TypeScript).
+- After each change, the system shall run the project's existing test suite (e.g., via `npm test`).
+- If tests fail after an update, the system shall attempt to automatically fix the issue. If it cannot, it will roll back the specific change and mark the dependency as problematic.
+- A resurrection is considered successful if the final code compiles and all existing tests pass.
 
-#### Acceptance Criteria
+### FR-007: Output & Reporting
+- The system shall produce a final `Resurrection Report` in Markdown.
+- The report shall include:
+  - A summary of the changes made.
+  - A table of dependencies updated (package, old version, new version).
+  - A list of security vulnerabilities fixed.
+  - A link to the resurrection branch.
+- The system shall provide the option to create a pull request on the original GitHub repository with the resurrection branch and report.
 
-1. WHEN analyzing a repository THEN the Death Score Calculator SHALL compute a death score between 0 and 100
-2. WHEN the last commit is older than 24 months THEN the Death Score Calculator SHALL increase the death score by 40 points
-3. WHEN the repository has outdated dependencies THEN the Death Score Calculator SHALL increase the death score by 10 points per outdated major dependency up to 30 points
-4. WHEN the death score exceeds 50 THEN the Death Score Calculator SHALL classify the repository as abandoned
-5. THE Death Score Calculator SHALL generate a death certificate documenting the time of death and contributing factors
+## 4. Non-Functional Requirements
 
-### Requirement 3
+### NFR-001: Performance
+- The end-to-end resurrection process for a small-to-medium sized repository (e.g., < 50 dependencies, < 20,000 LOC) should complete in under 15 minutes.
 
-**User Story:** As a developer, I want the system to identify all project dependencies, so that I can understand what needs updating.
+### NFR-002: Reliability
+- The system's transformation process must be idempotent. Running the resurrection on the same repository with the same configuration should produce the same result.
+- The system must handle network errors gracefully (e.g., when calling GitHub or npm) with a retry mechanism.
 
-#### Acceptance Criteria
+### NFR-003: Security
+- The system must operate in a sandboxed environment to prevent arbitrary code execution from the target repository's build or test scripts from affecting the host system.
+- The system must not leak any sensitive information, such as API keys used for MCP server access.
 
-1. WHEN a package.json file is detected THEN the Dependency Scanner SHALL parse all dependencies and devDependencies
-2. WHEN parsing dependencies THEN the Dependency Scanner SHALL extract the package name and current version for each dependency
-3. WHEN a package-lock.json file exists THEN the Dependency Scanner SHALL use it to identify the exact installed versions
-4. WHEN no package.json file is found THEN the Dependency Scanner SHALL report that the repository is not a JavaScript project
-5. THE Dependency Scanner SHALL build a dependency inventory containing all direct dependencies
+### NFR-004: Usability
+- The system must provide clear, real-time feedback on its progress through the resurrection stages.
+- Final reports must be easy to read and understand for a technical audience.
 
-### Requirement 4
-
-**User Story:** As a developer, I want to know which dependencies are outdated, so that I can prioritize modernization efforts.
-
-#### Acceptance Criteria
-
-1. WHEN the dependency inventory is complete THEN the Version Checker SHALL query the npm registry for the latest version of each package
-2. WHEN comparing versions THEN the Version Checker SHALL determine if the current version is behind the latest stable version
-3. WHEN a dependency has a newer major version THEN the Version Checker SHALL flag it as a major update
-4. WHEN a dependency has a newer minor or patch version THEN the Version Checker SHALL flag it as a minor update
-5. THE Version Checker SHALL calculate the total number of versions behind for each outdated dependency
-
-### Requirement 5
-
-**User Story:** As a developer, I want to identify security vulnerabilities in dependencies, so that I can address critical risks first.
-
-#### Acceptance Criteria
-
-1. WHEN analyzing dependencies THEN the Version Checker SHALL check for known security vulnerabilities using npm audit data
-2. WHEN a vulnerability is found THEN the Version Checker SHALL record the severity level as critical, high, moderate, or low
-3. WHEN a patched version exists THEN the Version Checker SHALL identify the minimum version that fixes the vulnerability
-4. THE Version Checker SHALL count the total number of vulnerabilities by severity level
-5. THE Version Checker SHALL prioritize dependencies with critical or high severity vulnerabilities
-
-### Requirement 6
-
-**User Story:** As a developer, I want a comprehensive resurrection report, so that I can understand what needs to be done to modernize the repository.
-
-#### Acceptance Criteria
-
-1. WHEN analysis is complete THEN the Resurrection Report Generator SHALL create a markdown report
-2. WHEN generating the report THEN the Resurrection Report Generator SHALL include an executive summary with key metrics
-3. WHEN generating the report THEN the Resurrection Report Generator SHALL include the death certificate with abandonment details
-4. WHEN generating the report THEN the Resurrection Report Generator SHALL include a dependency analysis table showing current vs latest versions
-5. WHEN generating the report THEN the Resurrection Report Generator SHALL include prioritized recommendations for modernization
-6. WHEN generating the report THEN the Resurrection Report Generator SHALL include a security vulnerabilities section if any are found
-7. THE Resurrection Report Generator SHALL save the report as a markdown file in the output directory
-
-### Requirement 7
-
-**User Story:** As a developer, I want the analysis to complete within a reasonable time, so that I can quickly assess multiple repositories.
-
-#### Acceptance Criteria
-
-1. WHEN analyzing a repository under 100MB THEN the Repository Analyzer SHALL complete within 60 seconds
-2. WHEN querying package versions THEN the Version Checker SHALL batch requests to avoid rate limiting
-3. WHEN the analysis exceeds 5 minutes THEN the Repository Analyzer SHALL timeout and report partial results
-4. THE Repository Analyzer SHALL provide progress updates during long-running operations
-
-### Requirement 8
-
-**User Story:** As a developer, I want clear error messages when analysis fails, so that I can troubleshoot issues effectively.
-
-#### Acceptance Criteria
-
-1. WHEN an error occurs THEN the Repository Analyzer SHALL log the error with context information
-2. WHEN network requests fail THEN the Repository Analyzer SHALL retry up to 3 times with exponential backoff
-3. WHEN a critical error prevents analysis THEN the Repository Analyzer SHALL generate a partial report with available data
-4. WHEN errors occur THEN the Repository Analyzer SHALL include error details in the final report
-5. THE Repository Analyzer SHALL clean up temporary files even when errors occur
+### NFR-005: Scope & Limitations (MVP)
+- The MVP will only support repositories using `npm` for package management.
+- The MVP will have a limited set of automated code-fix patterns. Complex breaking changes will require manual intervention.
+- The MVP will focus on resurrecting projects that have an existing, passing test suite.
