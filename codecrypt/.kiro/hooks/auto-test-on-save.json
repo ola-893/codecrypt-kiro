@@ -1,0 +1,13 @@
+{
+  "name": "Auto-test on Service File Save",
+  "description": "Automatically run tests when a service file is saved",
+  "trigger": {
+    "type": "onFileSave",
+    "filePattern": "src/services/*.ts"
+  },
+  "action": {
+    "type": "sendMessage",
+    "message": "Run tests for the file that was just saved: ${filePath}"
+  },
+  "enabled": true
+}

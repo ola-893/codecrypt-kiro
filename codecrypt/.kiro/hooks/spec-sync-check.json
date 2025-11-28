@@ -1,0 +1,13 @@
+{
+  "name": "Spec Sync Check",
+  "description": "Check if tasks.md needs updating when design.md changes",
+  "trigger": {
+    "type": "onFileSave",
+    "filePattern": "**/.kiro/specs/*/design.md"
+  },
+  "action": {
+    "type": "sendMessage",
+    "message": "Design document updated. Review if tasks.md needs to be regenerated to stay in sync."
+  },
+  "enabled": true
+}

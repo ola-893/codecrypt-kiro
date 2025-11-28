@@ -320,3 +320,35 @@ export interface HybridAnalysis {
   /** Timestamp when combined analysis was performed */
   analyzedAt: Date;
 }
+
+/**
+ * Snapshot of metrics at a specific point in time
+ */
+export interface MetricsSnapshot {
+  /** Timestamp when metrics were captured */
+  timestamp: number;
+  /** Number of dependencies updated */
+  depsUpdated: number;
+  /** Number of security vulnerabilities fixed */
+  vulnsFixed: number;
+  /** Code complexity score */
+  complexity: number;
+  /** Test coverage percentage (0-100) */
+  coverage: number;
+  /** Lines of code */
+  loc: number;
+  /** Overall progress percentage (0-100) */
+  progress: number;
+}
+
+/**
+ * Complete metrics history for visualization
+ */
+export interface MetricsHistory {
+  /** Array of metric snapshots over time */
+  snapshots: MetricsSnapshot[];
+  /** Initial baseline metrics */
+  baseline: MetricsSnapshot;
+  /** Current metrics */
+  current: MetricsSnapshot;
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Task Completion Reminder",
+  "description": "Remind to update task status after completing work",
+  "trigger": {
+    "type": "onMessage",
+    "pattern": "(implemented|completed|finished|done with)"
+  },
+  "action": {
+    "type": "sendMessage",
+    "message": "Don't forget to update the task status in tasks.md if you completed a task!"
+  },
+  "enabled": true
+}

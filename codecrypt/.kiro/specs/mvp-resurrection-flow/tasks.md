@@ -190,28 +190,28 @@
     - Generate comprehensive analysis for planning
     - _Requirements: FR-004_
   
-  - [ ]* 13.4 Write unit tests for LLM integration
+  - [x] 13.4 Write unit tests for LLM integration
     - Test prompt generation
     - Test response parsing
     - Test error handling and retries
     - Mock LLM API for testing
     - _Requirements: FR-004, NFR-002_
 
-- [ ] 14. Implement Enhanced Metrics Pipeline
-  - [ ] 14.1 Create metrics calculation service
+- [x] 14. Implement Enhanced Metrics Pipeline
+  - [x] 14.1 Create metrics calculation service
     - Calculate all metrics (deps, vulns, complexity, coverage, LOC)
     - Implement time-series storage in Kiro context
     - Create MetricsSnapshot data structure
     - _Requirements: FR-005, FR-010_
   
-  - [ ] 14.2 Integrate metrics with event system
+  - [x] 14.2 Integrate metrics with event system
     - Listen for transformation_applied events
     - Recalculate metrics after each transformation
     - Emit metric_updated events
     - Store metrics history for visualization
     - _Requirements: FR-005_
   
-  - [ ]* 14.3 Write unit tests for metrics pipeline
+  - [x] 14.3 Write unit tests for metrics pipeline
     - Test metrics calculation accuracy
     - Test time-series storage
     - Test event emission

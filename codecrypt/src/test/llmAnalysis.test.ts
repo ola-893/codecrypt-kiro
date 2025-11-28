@@ -183,4 +183,288 @@ suite('LLM Analysis Service', () => {
       assert.ok(client);
     });
   });
+
+  suite('Prompt Generation', () => {
+    test('should generate prompt with file path', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      let capturedPrompt = '';
+      (client as any).analyzeCode = async (prompt: string) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          developerIntent: 'Test',
+          domainConcepts: [],
+          idiomaticPatterns: [],
+          antiPatterns: [],
+          modernizationSuggestions: [],
+          confidence: 0.8,
+        });
+      };
+
+      await analyzeFile(client, 'const x = 1;', 'src/utils/helper.ts');
+
+      assert.ok(capturedPrompt.includes('src/utils/helper.ts'));
+    });
+
+    test('should generate prompt with code content', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      let capturedPrompt = '';
+      (client as any).analyzeCode = async (prompt: string) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          developerIntent: 'Test',
+          domainConcepts: [],
+          idiomaticPatterns: [],
+          antiPatterns: [],
+          modernizationSuggestions: [],
+          confidence: 0.8,
+        });
+      };
+
+      const code = 'function add(a, b) { return a + b; }';
+      await analyzeFile(client, code, 'test.js');
+
+      assert.ok(capturedPrompt.includes(code));
+    });
+
+    test('should include analysis guidelines in prompt', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      let capturedPrompt = '';
+      (client as any).analyzeCode = async (prompt: string) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          developerIntent: 'Test',
+          domainConcepts: [],
+          idiomaticPatterns: [],
+          antiPatterns: [],
+          modernizationSuggestions: [],
+          confidence: 0.8,
+        });
+      };
+
+      await analyzeFile(client, 'const x = 1;', 'test.js');
+
+      assert.ok(capturedPrompt.includes('Developer Intent'));
+      assert.ok(capturedPrompt.includes('Domain Concepts'));
+      assert.ok(capturedPrompt.includes('Idiomatic Patterns'));
+      assert.ok(capturedPrompt.includes('Anti-Patterns'));
+      assert.ok(capturedPrompt.includes('Modernization'));
+    });
+  });
+
+  suite('Response Parsing', () => {
+    test('should extract JSON from response with markdown', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      // Mock response with markdown formatting
+      const mockResponse = `Here's the analysis:
+\`\`\`json
+{
+  "developerIntent": "Test function",
+  "domainConcepts": ["testing"],
+  "idiomaticPatterns": [],
+  "antiPatterns": [],
+  "modernizationSuggestions": [],
+  "confidence": 0.9
+}
+\`\`\``;
+      
+      (client as any).analyzeCode = async () => mockResponse;
+
+      const result = await analyzeFile(client, 'test code', 'test.js');
+
+      assert.strictEqual(result.developerIntent, 'Test function');
+      assert.strictEqual(result.confidence, 0.9);
+    });
+
+    test('should handle response with extra text', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      const mockResponse = `Let me analyze this code.
+{
+  "developerIntent": "Helper function",
+  "domainConcepts": ["utilities"],
+  "idiomaticPatterns": [],
+  "antiPatterns": [],
+  "modernizationSuggestions": [],
+  "confidence": 0.85
+}
+That's my analysis.`;
+      
+      (client as any).analyzeCode = async () => mockResponse;
+
+      const result = await analyzeFile(client, 'test code', 'test.js');
+
+      assert.strictEqual(result.developerIntent, 'Helper function');
+      assert.strictEqual(result.confidence, 0.85);
+    });
+
+    test('should use default values for missing fields', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      // Response missing some fields
+      const mockResponse = JSON.stringify({
+        developerIntent: 'Test',
+        // Missing other fields
+      });
+      
+      (client as any).analyzeCode = async () => mockResponse;
+
+      const result = await analyzeFile(client, 'test code', 'test.js');
+
+      assert.strictEqual(result.developerIntent, 'Test');
+      assert.deepStrictEqual(result.domainConcepts, []);
+      assert.deepStrictEqual(result.idiomaticPatterns, []);
+      assert.deepStrictEqual(result.antiPatterns, []);
+      assert.deepStrictEqual(result.modernizationSuggestions, []);
+      assert.strictEqual(result.confidence, 0.5); // Default confidence
+    });
+
+    test('should handle completely invalid JSON', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      (client as any).analyzeCode = async () => 'This is not JSON at all';
+
+      const result = await analyzeFile(client, 'test code', 'test.js');
+
+      // Should return fallback with zero confidence
+      assert.strictEqual(result.confidence, 0);
+      assert.strictEqual(result.developerIntent, 'Unable to analyze');
+    });
+  });
+
+  suite('Retry Logic', () => {
+    test('should have retry configuration', () => {
+      const client = new LLMClient({ apiKey: 'test-key', maxRetries: 3 });
+      
+      // Verify retry configuration is set
+      assert.strictEqual((client as any).config.maxRetries, 3);
+    });
+
+    test('should handle errors gracefully', async () => {
+      const client = new LLMClient({ apiKey: 'test-key', maxRetries: 1 });
+      
+      // Mock analyzeCode to throw error
+      (client as any).analyzeCode = async () => {
+        throw new Error('API Error');
+      };
+
+      try {
+        await analyzeFile(client, 'test code', 'test.js');
+        assert.fail('Should have thrown error');
+      } catch (error) {
+        assert.ok(error);
+      }
+    });
+
+    test('should apply exponential backoff between retries', () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      const calculateBackoff = (client as any).calculateBackoff.bind(client);
+
+      // Test that backoff increases exponentially
+      const backoff0 = calculateBackoff(0);
+      const backoff1 = calculateBackoff(1);
+      const backoff2 = calculateBackoff(2);
+
+      // Each should be roughly double the previous (with jitter)
+      assert.ok(backoff1 > backoff0);
+      assert.ok(backoff2 > backoff1);
+      
+      // Verify exponential growth pattern
+      assert.ok(backoff0 >= 1000); // Base delay
+      assert.ok(backoff1 >= 2000); // 2x base
+      assert.ok(backoff2 >= 4000); // 4x base
+    });
+
+    test('should cap backoff at maximum delay', () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      const calculateBackoff = (client as any).calculateBackoff.bind(client);
+
+      // Test with very high retry count
+      const backoff10 = calculateBackoff(10);
+      
+      // Should be capped at 30 seconds + jitter
+      assert.ok(backoff10 <= 31000); // 30s max + 1s jitter
+    });
+
+    test('should identify retryable error types', () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      const isRetryableError = (client as any).isRetryableError.bind(client);
+
+      // Test with regular errors (not Anthropic.APIError)
+      assert.strictEqual(isRetryableError(new Error('Regular error')), false);
+      assert.strictEqual(isRetryableError({ message: 'Object error' }), false);
+    });
+  });
+
+  suite('Integration with AST Analysis', () => {
+    test('should use AST data to enrich prompts', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      let capturedPrompt = '';
+      (client as any).analyzeCode = async (prompt: string) => {
+        capturedPrompt = prompt;
+        return JSON.stringify({
+          developerIntent: 'Test',
+          domainConcepts: [],
+          idiomaticPatterns: [],
+          antiPatterns: [],
+          modernizationSuggestions: [],
+          confidence: 0.8,
+        });
+      };
+
+      const astAnalysis: FileASTAnalysis = {
+        filePath: 'complex.ts',
+        fileType: 'ts',
+        linesOfCode: 250,
+        structure: {
+          classes: [
+            {
+              name: 'ComplexClass',
+              methods: ['method1', 'method2'],
+              properties: ['prop1'],
+              isExported: true,
+            },
+          ],
+          functions: [],
+          imports: [],
+          exports: [],
+        },
+        complexity: {
+          cyclomatic: 15,
+          decisionPoints: 10,
+        },
+        callGraph: [],
+      };
+
+      await analyzeFile(client, 'class ComplexClass {}', 'complex.ts', astAnalysis);
+
+      // Verify AST metrics are in prompt
+      assert.ok(capturedPrompt.includes('250'));
+      assert.ok(capturedPrompt.includes('15'));
+      assert.ok(capturedPrompt.includes('ComplexClass'));
+    });
+
+    test('should work without AST data', async () => {
+      const client = new LLMClient({ apiKey: 'test-key' });
+      
+      (client as any).analyzeCode = async () => JSON.stringify({
+        developerIntent: 'Test',
+        domainConcepts: [],
+        idiomaticPatterns: [],
+        antiPatterns: [],
+        modernizationSuggestions: [],
+        confidence: 0.7,
+      });
+
+      // Should not throw when AST analysis is not provided
+      const result = await analyzeFile(client, 'const x = 1;', 'test.js');
+
+      assert.ok(result);
+      assert.strictEqual(result.filePath, 'test.js');
+    });
+  });
 });
