@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "fetch"
+      ]
+    },
+    "github": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-github"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "search_repositories",
+        "get_file_contents",
+        "list_commits",
+        "get_issue"
+      ]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/ola/Documents/Github/codecrypt-kiro/codecrypt"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files"
+      ]
+    }
+  }
+}
