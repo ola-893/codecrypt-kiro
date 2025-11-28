@@ -243,3 +243,148 @@ export async function createResurrectionBranch(repoPath: string): Promise<string
     );
   }
 }
+
+/**
+ * Push a branch to the remote repository
+ * 
+ * @param repoPath Path to the repository
+ * @param branchName Name of the branch to push
+ * @param retries Number of retry attempts
+ */
+export async function pushBranch(
+  repoPath: string,
+  branchName: string,
+  retries = 3
+): Promise<void> {
+  logger.info(`Pushing branch ${branchName} to remote`);
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      const execFileAsync = promisify(execFile);
+      
+      // Push the branch to origin
+      await execFileAsync('git', ['push', '-u', 'origin', branchName], { cwd: repoPath });
+      
+      logger.info(`Successfully pushed branch ${branchName}`);
+      return;
+      
+    } catch (error: any) {
+      logger.warn(`Attempt ${attempt}/${retries} failed to push branch: ${error.message}`);
+      
+      if (attempt === retries) {
+        throw new CodeCryptError(
+          `Failed to push branch after ${retries} attempts: ${error.message}`,
+          'GIT_PUSH_ERROR'
+        );
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+
+/**
+ * Create a pull request on GitHub
+ * Uses GitHub CLI to create the PR with resurrection report
+ * 
+ * @param owner Repository owner
+ * @param repo Repository name
+ * @param branchName Name of the head branch (resurrection branch)
+ * @param baseBranch Name of the base branch (usually 'main' or 'master')
+ * @param title PR title
+ * @param body PR body (resurrection report)
+ * @param retries Number of retry attempts
+ * @returns URL of the created pull request
+ */
+export async function createPullRequest(
+  owner: string,
+  repo: string,
+  branchName: string,
+  baseBranch: string,
+  title: string,
+  body: string,
+  retries = 3
+): Promise<string> {
+  logger.info(`Creating pull request for ${owner}/${repo}`);
+  logger.info(`  Head: ${branchName}`);
+  logger.info(`  Base: ${baseBranch}`);
+  logger.info(`  Title: ${title}`);
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      const execFileAsync = promisify(execFile);
+      
+      // Create PR using GitHub CLI
+      const { stdout } = await execFileAsync('gh', [
+        'pr',
+        'create',
+        '--repo', `${owner}/${repo}`,
+        '--head', branchName,
+        '--base', baseBranch,
+        '--title', title,
+        '--body', body
+      ]);
+      
+      const prUrl = stdout.trim();
+      
+      logger.info(`Successfully created pull request: ${prUrl}`);
+      return prUrl;
+      
+    } catch (error: any) {
+      logger.warn(`Attempt ${attempt}/${retries} failed to create PR: ${error.message}`);
+      
+      if (attempt === retries) {
+        // Check if the error is due to no commits
+        if (error.message.includes('no commits') || error.message.includes('No commits')) {
+          throw new CodeCryptError(
+            'Cannot create pull request: no commits on resurrection branch',
+            'NO_COMMITS_ERROR'
+          );
+        }
+        
+        // Check if PR already exists
+        if (error.message.includes('already exists')) {
+          logger.warn('Pull request already exists for this branch');
+          throw new CodeCryptError(
+            'Pull request already exists for this branch',
+            'PR_ALREADY_EXISTS'
+          );
+        }
+        
+        throw new CodeCryptError(
+          `Failed to create pull request after ${retries} attempts: ${error.message}`,
+          'PR_CREATION_ERROR'
+        );
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  
+  throw new CodeCryptError('Unexpected error in createPullRequest', 'UNKNOWN_ERROR');
+}
+
+/**
+ * Generate a resurrection-themed PR title
+ * 
+ * @param stats Statistics about the resurrection
+ * @returns Formatted PR title
+ */
+export function generatePRTitle(stats: {
+  updatesCount: number;
+  vulnerabilitiesFixed: number;
+}): string {
+  const emoji = '🧟';
+  
+  if (stats.vulnerabilitiesFixed > 0) {
+    return `${emoji} CodeCrypt Resurrection: ${stats.updatesCount} updates, ${stats.vulnerabilitiesFixed} vulnerabilities fixed`;
+  }
+  
+  return `${emoji} CodeCrypt Resurrection: ${stats.updatesCount} dependency updates`;
+}

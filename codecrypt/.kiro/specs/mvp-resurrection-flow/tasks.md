@@ -88,11 +88,11 @@
     - Mark problematic dependencies in report
     - _Requirements: FR-006, NFR-002_
 
-- [ ] 7. Checkpoint - Ensure all tests pass
+- [x] 7. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Implement resurrection reporting
-  - [ ] 8.1 Generate Resurrection Report
+- [x] 8. Implement resurrection reporting
+  - [x] 8.1 Generate Resurrection Report
     - Create Markdown formatter for final report
     - Include summary of changes made
     - Add table of updated dependencies (package, old version, new version)
@@ -100,7 +100,7 @@
     - Include link to resurrection branch
     - _Requirements: FR-007, NFR-004_
   
-  - [ ] 8.2 Create pull request via GitHub MCP
+  - [x] 8.2 Create pull request via GitHub MCP
     - Use `github_server` MCP to create PR
     - Set PR title with resurrection theme
     - Include resurrection report in PR body

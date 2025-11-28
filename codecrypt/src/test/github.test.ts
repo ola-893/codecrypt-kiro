@@ -39,3 +39,38 @@ suite('GitHub Service Test Suite', () => {
 		}, /Invalid GitHub URL format/);
 	});
 });
+
+suite('GitHub PR Creation', () => {
+	const { generatePRTitle } = require('../services/github');
+	
+	test('generatePRTitle - with vulnerabilities fixed', () => {
+		const title = generatePRTitle({
+			updatesCount: 5,
+			vulnerabilitiesFixed: 3
+		});
+		
+		assert.ok(title.includes('🧟'));
+		assert.ok(title.includes('5 updates'));
+		assert.ok(title.includes('3 vulnerabilities fixed'));
+	});
+	
+	test('generatePRTitle - without vulnerabilities', () => {
+		const title = generatePRTitle({
+			updatesCount: 2,
+			vulnerabilitiesFixed: 0
+		});
+		
+		assert.ok(title.includes('🧟'));
+		assert.ok(title.includes('2 dependency updates'));
+		assert.ok(!title.includes('vulnerabilities'));
+	});
+	
+	test('generatePRTitle - single update', () => {
+		const title = generatePRTitle({
+			updatesCount: 1,
+			vulnerabilitiesFixed: 0
+		});
+		
+		assert.ok(title.includes('1 dependency updates'));
+	});
+});
