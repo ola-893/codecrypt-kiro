@@ -9,13 +9,22 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:codecrypt.resurrectRepository",
+    "onCommand:codecrypt.helloWorld"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "codecrypt.resurrectRepository",
+        "title": "🧟 CodeCrypt: Resurrect Repository",
+        "category": "CodeCrypt"
+      },
+      {
         "command": "codecrypt.helloWorld",
-        "title": "Hello World"
+        "title": "🧟 CodeCrypt: Hello World",
+        "category": "CodeCrypt"
       }
     ]
   },
