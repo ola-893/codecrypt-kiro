@@ -9,6 +9,7 @@ import { execSync } from 'child_process';
 import { TransformationLogEntry } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
+import { sandboxedNpmTest, executeSandboxedNpm } from './sandbox';
 
 const logger = getLogger();
 
@@ -62,6 +63,7 @@ async function hasTestScript(repoPath: string): Promise<boolean> {
 
 /**
  * Run TypeScript compilation check
+ * Note: This runs tsc directly, not through npm, so it doesn't need sandboxing
  */
 async function runCompilationCheck(repoPath: string): Promise<{ success: boolean; output: string }> {
   logger.validation('compilation', 'running');
@@ -85,24 +87,19 @@ async function runCompilationCheck(repoPath: string): Promise<{ success: boolean
 }
 
 /**
- * Run test suite
+ * Run test suite in sandboxed environment
  */
 async function runTests(repoPath: string): Promise<{ success: boolean; output: string }> {
   logger.validation('tests', 'running');
   
   try {
-    const output = execSync('npm test', {
-      cwd: repoPath,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-      timeout: 120000 // 2 minute timeout
-    });
+    const output = sandboxedNpmTest(repoPath);
     
     logger.validation('tests', true);
     return { success: true, output };
     
   } catch (error: any) {
-    const output = error.stdout || error.stderr || error.message;
+    const output = error.message || String(error);
     logger.validation('tests', false, output.substring(0, 500));
     return { success: false, output };
   }

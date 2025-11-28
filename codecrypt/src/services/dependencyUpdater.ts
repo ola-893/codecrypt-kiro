@@ -9,6 +9,7 @@ import { execSync } from 'child_process';
 import { ResurrectionPlanItem, TransformationLogEntry } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
+import { sandboxedNpmInstall, validateFilePath, safeReadFile, safeWriteFile } from './sandbox';
 
 const logger = getLogger();
 
@@ -48,10 +49,30 @@ export async function updateDependency(
   );
   
   try {
-    // Read package.json
+    // Read package.json with sandboxed file access
     const packageJsonPath = path.join(repoPath, 'package.json');
-    const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
-    const packageJson = JSON.parse(packageJsonContent);
+    let packageJsonContent: string;
+    let packageJson: any;
+    
+    try {
+      // Validate file path is within repository
+      validateFilePath(packageJsonPath, repoPath);
+      packageJsonContent = await safeReadFile(packageJsonPath, repoPath);
+    } catch (error: any) {
+      throw new CodeCryptError(
+        `Failed to read package.json: ${error.message}`,
+        'FILE_READ_ERROR'
+      );
+    }
+    
+    try {
+      packageJson = JSON.parse(packageJsonContent);
+    } catch (error: any) {
+      throw new CodeCryptError(
+        `Failed to parse package.json: ${error.message}`,
+        'JSON_PARSE_ERROR'
+      );
+    }
     
     // Update the version in dependencies or devDependencies
     let updated = false;
@@ -75,38 +96,64 @@ export async function updateDependency(
       );
     }
     
-    // Write updated package.json
-    await fs.writeFile(
-      packageJsonPath,
-      JSON.stringify(packageJson, null, 2) + '\n',
-      'utf-8'
-    );
-    logger.info('package.json updated');
-    
-    // Run npm install
-    logger.info('Running npm install...');
+    // Write updated package.json with sandboxed file access
     try {
-      const output = execSync('npm install', {
-        cwd: repoPath,
-        stdio: 'pipe',
-        encoding: 'utf-8',
-        timeout: 120000 // 2 minute timeout
-      });
+      await safeWriteFile(
+        packageJsonPath,
+        JSON.stringify(packageJson, null, 2) + '\n',
+        repoPath
+      );
+      logger.info('package.json updated');
+    } catch (error: any) {
+      throw new CodeCryptError(
+        `Failed to write package.json: ${error.message}`,
+        'FILE_WRITE_ERROR'
+      );
+    }
+    
+    // Run npm install in sandboxed environment
+    logger.info('Running sandboxed npm install...');
+    try {
+      sandboxedNpmInstall(repoPath);
       logger.info('npm install completed successfully');
     } catch (error: any) {
-      const errorMessage = error.stderr || error.stdout || error.message;
       logger.error('npm install failed', error);
+      
+      // Provide user-friendly error messages based on common npm errors
+      const errorMessage = error.message || String(error);
+      let userMessage = 'npm install failed';
+      
+      if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
+        userMessage = 'Network error during npm install. Please check your internet connection.';
+      } else if (errorMessage.includes('EACCES') || errorMessage.includes('permission')) {
+        userMessage = 'Permission denied during npm install. Check file permissions.';
+      } else if (errorMessage.includes('ETIMEOUT') || errorMessage.includes('timeout')) {
+        userMessage = 'npm install timed out. The registry may be slow or unreachable.';
+      } else if (errorMessage.includes('peer dep')) {
+        userMessage = `Peer dependency conflict when installing ${planItem.packageName}`;
+      } else if (errorMessage.includes('out of memory')) {
+        userMessage = 'npm install ran out of memory. Try closing other applications.';
+      }
+      
       throw new CodeCryptError(
-        `npm install failed: ${errorMessage}`,
+        `${userMessage}: ${errorMessage}`,
         'NPM_INSTALL_FAILED'
       );
     }
     
-    // Commit the changes
+    // Commit the changes with error handling
     const commitMessage = generateCommitMessage(planItem);
-    const commitHash = await commitChanges(repoPath, commitMessage);
+    let commitHash: string;
     
-    logger.info(`Changes committed: ${commitHash}`);
+    try {
+      commitHash = await commitChanges(repoPath, commitMessage);
+      logger.info(`Changes committed: ${commitHash}`);
+    } catch (error: any) {
+      throw new CodeCryptError(
+        `Failed to commit changes: ${error.message}`,
+        'GIT_COMMIT_FAILED'
+      );
+    }
     
     // Log successful update
     logger.dependencyUpdate(
@@ -124,6 +171,10 @@ export async function updateDependency(
     };
     
   } catch (error: any) {
+    const errorMessage = error instanceof CodeCryptError 
+      ? error.message 
+      : `Unexpected error: ${error.message || 'Unknown error'}`;
+    
     logger.error(`Failed to update ${planItem.packageName}`, error);
     
     // Log failed update
@@ -138,7 +189,7 @@ export async function updateDependency(
       success: false,
       packageName: planItem.packageName,
       version: planItem.targetVersion,
-      error: error.message || 'Unknown error'
+      error: errorMessage
     };
   }
 }

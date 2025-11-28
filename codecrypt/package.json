@@ -9,10 +9,7 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:codecrypt.resurrectRepository",
-    "onCommand:codecrypt.helloWorld"
-  ],
+  "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -25,8 +22,56 @@
         "command": "codecrypt.helloWorld",
         "title": "🧟 CodeCrypt: Hello World",
         "category": "CodeCrypt"
+      },
+      {
+        "command": "codecrypt.configureGitHubToken",
+        "title": "🔒 CodeCrypt: Configure GitHub Token",
+        "category": "CodeCrypt"
+      },
+      {
+        "command": "codecrypt.clearSecrets",
+        "title": "🗑️ CodeCrypt: Clear All Secrets",
+        "category": "CodeCrypt"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "CodeCrypt",
+      "properties": {
+        "codecrypt.mcpServers": {
+          "type": "array",
+          "default": [],
+          "description": "MCP server configurations for CodeCrypt",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the MCP server"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command to execute the MCP server"
+              },
+              "args": {
+                "type": "array",
+                "description": "Arguments for the MCP server command",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables for the MCP server (avoid storing secrets here)"
+              },
+              "disabled": {
+                "type": "boolean",
+                "description": "Whether the MCP server is disabled"
+              }
+            }
+          }
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

@@ -12,6 +12,7 @@ import { analyzeDependencies } from './services/dependencyAnalysis';
 import { generateResurrectionPlan } from './services/resurrectionPlanning';
 import { ResurrectionContext, DependencyReport } from './types';
 import { withProgressReporter, ResurrectionStage } from './services/progress';
+import { initializeSecureConfig } from './services/secureConfig';
 
 /**
  * Extension activation
@@ -22,6 +23,10 @@ export function activate(context: vscode.ExtensionContext) {
 	const logger = initializeLogger('CodeCrypt');
 	logger.section('🧟 CODECRYPT EXTENSION ACTIVATED');
 	logger.info('CodeCrypt is ready to resurrect your code!');
+	
+	// Initialize secure configuration manager
+	initializeSecureConfig(context);
+	logger.info('Secure configuration initialized');
 
 	// Register the resurrect repository command
 	const resurrectCommand = vscode.commands.registerCommand(
@@ -71,46 +76,75 @@ export function activate(context: vscode.ExtensionContext) {
 							// Stage 1: Initialize and parse URL
 							logger.subsection('Stage 1: Initialization');
 							reporter.reportStage(ResurrectionStage.INITIALIZING, 'Parsing repository URL');
-							const { owner, repo } = parseGitHubUrl(context.repoUrl);
-							logger.info(`Parsed repository: ${owner}/${repo}`);
 							
-							// Fetch repository metadata
+							let owner: string;
+							let repo: string;
+							
+							try {
+								const parsed = parseGitHubUrl(context.repoUrl);
+								owner = parsed.owner;
+								repo = parsed.repo;
+								logger.info(`Parsed repository: ${owner}/${repo}`);
+							} catch (error) {
+								throw new Error(`Invalid GitHub URL: ${formatErrorForUser(error)}`);
+							}
+							
+							// Fetch repository metadata with error handling
 							reporter.reportProgress('Fetching repository metadata');
-							const metadata = await fetchRepositoryMetadata(owner, repo);
-							logger.info(`Repository: ${metadata.fullName}`);
-							logger.info(`Language: ${metadata.language || 'Unknown'}`);
-							logger.info(`Stars: ${metadata.stars}`);
-							logger.info(`Last pushed: ${metadata.lastPushedAt}`);
+							let metadata;
 							
-							// Stage 2: Clone repository
+							try {
+								metadata = await fetchRepositoryMetadata(owner, repo);
+								logger.info(`Repository: ${metadata.fullName}`);
+								logger.info(`Language: ${metadata.language || 'Unknown'}`);
+								logger.info(`Stars: ${metadata.stars}`);
+								logger.info(`Last pushed: ${metadata.lastPushedAt}`);
+							} catch (error) {
+								throw new Error(`Failed to fetch repository metadata: ${formatErrorForUser(error)}`);
+							}
+							
+							// Stage 2: Clone repository with error handling
 							logger.subsection('Stage 2: Cloning Repository');
 							reporter.reportStage(ResurrectionStage.CLONING, `Cloning ${owner}/${repo}`);
-							const repoPath = await cloneRepository(owner, repo);
-							context.repoPath = repoPath;
-							logger.info(`Repository cloned to: ${repoPath}`);
 							
-							// Stage 3: Analyze repository
+							let repoPath: string;
+							
+							try {
+								repoPath = await cloneRepository(owner, repo);
+								context.repoPath = repoPath;
+								logger.info(`Repository cloned to: ${repoPath}`);
+							} catch (error) {
+								throw new Error(`Failed to clone repository: ${formatErrorForUser(error)}`);
+							}
+							
+							// Stage 3: Analyze repository with error handling
 							logger.subsection('Stage 3: Death Detection & Analysis');
 							reporter.reportStage(ResurrectionStage.ANALYZING, 'Checking repository activity');
-							const deathAnalysis = await analyzeRepositoryDeath(repoPath);
-							context.isDead = deathAnalysis.isDead;
-							context.lastCommitDate = deathAnalysis.lastCommitDate;
 							
-							const statusEmoji = deathAnalysis.isDead ? '💀' : '✅';
-							logger.info(`Death analysis: ${deathAnalysis.isDead ? 'DEAD' : 'ALIVE'}`);
-							logger.info(`Last commit: ${deathAnalysis.lastCommitDate.toISOString()}`);
-							logger.info(`Days since last commit: ${deathAnalysis.daysSinceLastCommit}`);
+							try {
+								const deathAnalysis = await analyzeRepositoryDeath(repoPath);
+								context.isDead = deathAnalysis.isDead;
+								context.lastCommitDate = deathAnalysis.lastCommitDate;
+								
+								const statusEmoji = deathAnalysis.isDead ? '💀' : '✅';
+								logger.info(`Death analysis: ${deathAnalysis.isDead ? 'DEAD' : 'ALIVE'}`);
+								logger.info(`Last commit: ${deathAnalysis.lastCommitDate.toISOString()}`);
+								logger.info(`Days since last commit: ${deathAnalysis.daysSinceLastCommit}`);
+								
+								// Generate death certificate
+								reporter.reportProgress('Generating death certificate');
+								const certificatePath = await generateDeathCertificate(
+									repoPath,
+									metadata.fullName,
+									deathAnalysis
+								);
+								logger.info(`Death certificate generated: ${certificatePath}`);
+							} catch (error) {
+								logger.warn('Death detection failed, continuing with analysis', error);
+								reporter.reportProgress('Death detection skipped due to error');
+							}
 							
-							// Generate death certificate
-							reporter.reportProgress('Generating death certificate');
-							const certificatePath = await generateDeathCertificate(
-								repoPath,
-								metadata.fullName,
-								deathAnalysis
-							);
-							logger.info(`Death certificate generated: ${certificatePath}`);
-							
-							// Analyze dependencies
+							// Analyze dependencies with comprehensive error handling
 							logger.subsection('Dependency Analysis');
 							reporter.reportProgress('Analyzing dependencies');
 							let dependencyReport: DependencyReport | undefined;
@@ -134,19 +168,24 @@ export function activate(context: vscode.ExtensionContext) {
 										`Planning updates for ${dependencyReport.outdatedDependencies} dependencies`
 									);
 									
-									const resurrectionPlan = generateResurrectionPlan(dependencyReport);
-									context.resurrectionPlan = resurrectionPlan;
-									
-									logger.info('Resurrection plan generated');
-									logger.info(`  Total updates: ${resurrectionPlan.totalUpdates}`);
-									logger.info(`  Security patches: ${resurrectionPlan.securityPatches}`);
-									
-									// Create resurrection branch
-									reporter.reportProgress('Creating resurrection branch');
-									const branchName = await createResurrectionBranch(repoPath);
-									context.resurrectionBranch = branchName;
-									
-									logger.info(`Resurrection branch created: ${branchName}`);
+									try {
+										const resurrectionPlan = generateResurrectionPlan(dependencyReport);
+										context.resurrectionPlan = resurrectionPlan;
+										
+										logger.info('Resurrection plan generated');
+										logger.info(`  Total updates: ${resurrectionPlan.totalUpdates}`);
+										logger.info(`  Security patches: ${resurrectionPlan.securityPatches}`);
+										
+										// Create resurrection branch
+										reporter.reportProgress('Creating resurrection branch');
+										const branchName = await createResurrectionBranch(repoPath);
+										context.resurrectionBranch = branchName;
+										
+										logger.info(`Resurrection branch created: ${branchName}`);
+									} catch (error) {
+										logger.error('Failed to create resurrection plan', error);
+										throw new Error(`Failed to create resurrection plan: ${formatErrorForUser(error)}`);
+									}
 								} else {
 									logger.info('No updates needed - repository is up to date');
 									reporter.reportProgress('Repository is up to date');
@@ -159,6 +198,7 @@ export function activate(context: vscode.ExtensionContext) {
 							
 							// Report completion
 							logger.subsection('Resurrection Process Complete');
+							const statusEmoji = context.isDead ? '💀' : '✅';
 							reporter.reportComplete(true, `${statusEmoji} Analysis complete`);
 							
 							// TODO: Implement automated resurrection in subsequent tasks
@@ -224,8 +264,54 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('🧟 CodeCrypt is ready to resurrect your code!');
 	});
 
+	// Register secure configuration commands
+	const configureGitHubTokenCommand = vscode.commands.registerCommand(
+		'codecrypt.configureGitHubToken',
+		async () => {
+			try {
+				const { getSecureConfig } = await import('./services/secureConfig.js');
+				const secureConfig = getSecureConfig();
+				await secureConfig.promptAndStoreGitHubToken();
+			} catch (error) {
+				logger.error('Failed to configure GitHub token', error);
+				vscode.window.showErrorMessage(
+					`Failed to configure GitHub token: ${formatErrorForUser(error)}`
+				);
+			}
+		}
+	);
+
+	const clearSecretsCommand = vscode.commands.registerCommand(
+		'codecrypt.clearSecrets',
+		async () => {
+			try {
+				const confirm = await vscode.window.showWarningMessage(
+					'Are you sure you want to clear all stored secrets?',
+					{ modal: true },
+					'Yes, clear all secrets'
+				);
+
+				if (confirm) {
+					const { getSecureConfig } = await import('./services/secureConfig.js');
+					const secureConfig = getSecureConfig();
+					await secureConfig.clearAllSecrets();
+				}
+			} catch (error) {
+				logger.error('Failed to clear secrets', error);
+				vscode.window.showErrorMessage(
+					`Failed to clear secrets: ${formatErrorForUser(error)}`
+				);
+			}
+		}
+	);
+
 	// Add commands to subscriptions
-	context.subscriptions.push(resurrectCommand, helloCommand);
+	context.subscriptions.push(
+		resurrectCommand,
+		helloCommand,
+		configureGitHubTokenCommand,
+		clearSecretsCommand
+	);
 	
 	logger.info('CodeCrypt commands registered successfully');
 }

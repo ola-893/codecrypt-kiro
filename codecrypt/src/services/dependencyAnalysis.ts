@@ -122,40 +122,68 @@ interface NpmAuditResponse {
 }
 
 /**
- * Queries npm registry for package information
+ * Queries npm registry for package information with retry logic
  * @param packageName Name of the npm package
+ * @param retries Maximum number of retry attempts
  * @returns Package metadata from npm registry
  */
-async function queryNpmRegistry(packageName: string): Promise<NpmPackageMetadata> {
+async function queryNpmRegistry(packageName: string, retries: number = 3): Promise<NpmPackageMetadata> {
   const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(packageName)}`;
+  let lastError: Error | undefined;
   
-  try {
-    const response = await fetch(registryUrl);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(registryUrl, {
+        headers: {
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new CodeCryptError(
+            `Package '${packageName}' not found in npm registry`,
+            'PACKAGE_NOT_FOUND'
+          );
+        }
+        if (response.status === 429) {
+          throw new CodeCryptError(
+            `Rate limited by npm registry for package '${packageName}'`,
+            'RATE_LIMITED'
+          );
+        }
         throw new CodeCryptError(
-          `Package '${packageName}' not found in npm registry`,
-          'PACKAGE_NOT_FOUND'
+          `Failed to fetch package '${packageName}' from npm registry: ${response.statusText}`,
+          'NPM_REGISTRY_ERROR'
         );
       }
-      throw new CodeCryptError(
-        `Failed to fetch package '${packageName}' from npm registry: ${response.statusText}`,
-        'NPM_REGISTRY_ERROR'
-      );
+      
+      const metadata: NpmPackageMetadata = await response.json();
+      return metadata;
+      
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Don't retry on 404 errors
+      if (error instanceof CodeCryptError && error.code === 'PACKAGE_NOT_FOUND') {
+        throw error;
+      }
+      
+      logger.warn(`Attempt ${attempt}/${retries} failed to query npm registry for '${packageName}': ${lastError.message}`);
+      
+      if (attempt < retries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = 1000 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-    
-    const metadata: NpmPackageMetadata = await response.json();
-    return metadata;
-  } catch (error) {
-    if (error instanceof CodeCryptError) {
-      throw error;
-    }
-    throw new CodeCryptError(
-      `Network error while querying npm registry for '${packageName}': ${error instanceof Error ? error.message : String(error)}`,
-      'NETWORK_ERROR'
-    );
   }
+  
+  throw new CodeCryptError(
+    `Failed to query npm registry for '${packageName}' after ${retries} attempts: ${lastError?.message}`,
+    'NETWORK_ERROR'
+  );
 }
 
 /**
