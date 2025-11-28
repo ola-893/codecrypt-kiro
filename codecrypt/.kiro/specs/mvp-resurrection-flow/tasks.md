@@ -163,7 +163,7 @@
     - Generate structural analysis report
     - _Requirements: FR-004, FR-005_
   
-  - [ ]* 12.4 Write unit tests for AST analysis
+  - [x] 12.4 Write unit tests for AST analysis
     - Test parsing of various JavaScript/TypeScript files
     - Test complexity calculation accuracy
     - Test handling of malformed code

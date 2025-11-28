@@ -3,7 +3,6 @@
  */
 
 import * as assert from 'assert';
-import * as path from 'path';
 import {
   detectFileType,
   parseJavaScriptFile,
@@ -18,7 +17,8 @@ import {
   detectCodeSmells,
   detectAntiPatterns,
   calculateComprehensiveMetrics,
-  generateCompleteAnalysisReport
+  generateCompleteAnalysisReport,
+  calculateCognitiveComplexity
 } from '../services/astAnalysis';
 import { ASTAnalysis, FileASTAnalysis } from '../types';
 
@@ -602,6 +602,552 @@ suite('AST Analysis Service Tests', () => {
       assert.ok(report.includes('## Summary'));
       assert.ok(report.includes('## Complexity Analysis'));
       assert.ok(report.includes('Total Files'));
+    });
+  });
+
+  // Additional comprehensive tests for parsing various file types
+  suite('Comprehensive JavaScript Parsing', () => {
+    test('should parse async/await functions', () => {
+      const code = `
+        async function fetchData(url) {
+          const response = await fetch(url);
+          return await response.json();
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.strictEqual(result.structure.functions[0].isAsync, true);
+      assert.strictEqual(result.structure.functions[0].name, 'fetchData');
+    });
+
+    test('should parse JSX components', () => {
+      const code = `
+        import React from 'react';
+        
+        function Button({ onClick, children }) {
+          return <button onClick={onClick}>{children}</button>;
+        }
+        
+        export default Button;
+      `;
+      const result = parseJavaScriptFile('Button.jsx', code);
+      
+      assert.strictEqual(result.fileType, 'jsx');
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.strictEqual(result.structure.imports.length, 1);
+      assert.strictEqual(result.structure.exports.length, 1);
+    });
+
+    test('should parse ES6 class with static methods', () => {
+      const code = `
+        export class MathUtils {
+          static add(a, b) {
+            return a + b;
+          }
+          
+          static multiply(a, b) {
+            return a * b;
+          }
+          
+          constructor() {
+            this.value = 0;
+          }
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.strictEqual(result.structure.classes.length, 1);
+      assert.strictEqual(result.structure.classes[0].name, 'MathUtils');
+      assert.ok(result.structure.classes[0].methods.length >= 2);
+    });
+
+    test('should parse destructured imports', () => {
+      const code = `
+        import { useState, useEffect, useCallback } from 'react';
+        import defaultExport from 'module';
+        import * as Everything from 'everything';
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.strictEqual(result.structure.imports.length, 3);
+      assert.ok(result.structure.imports.some(imp => imp.importType === 'named'));
+      assert.ok(result.structure.imports.some(imp => imp.importType === 'default'));
+      assert.ok(result.structure.imports.some(imp => imp.importType === 'namespace'));
+    });
+
+    test('should parse object and array destructuring', () => {
+      const code = `
+        const { name, age } = person;
+        const [first, second, ...rest] = array;
+        
+        function process({ id, data }) {
+          return data;
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.ok(result.linesOfCode > 0);
+    });
+
+    test('should parse template literals and tagged templates', () => {
+      const code = `
+        const message = \`Hello \${name}\`;
+        const styled = css\`
+          color: red;
+          font-size: 14px;
+        \`;
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.ok(result.linesOfCode > 0);
+      assert.strictEqual(result.errors, undefined);
+    });
+
+    test('should parse generator functions', () => {
+      const code = `
+        function* generateSequence() {
+          yield 1;
+          yield 2;
+          yield 3;
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.strictEqual(result.structure.functions[0].name, 'generateSequence');
+    });
+  });
+
+  suite('Comprehensive TypeScript Parsing', () => {
+    test('should parse TypeScript interfaces and types', () => {
+      const code = `
+        interface User {
+          id: number;
+          name: string;
+          email: string;
+        }
+        
+        type Status = 'active' | 'inactive' | 'pending';
+        
+        function getUser(id: number): User {
+          return { id, name: 'Test', email: 'test@example.com' };
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      assert.strictEqual(result.fileType, 'ts');
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.strictEqual(result.structure.functions[0].returnType, 'User');
+    });
+
+    test('should parse TypeScript generics', () => {
+      const code = `
+        function identity<T>(arg: T): T {
+          return arg;
+        }
+        
+        class Container<T> {
+          private value: T;
+          
+          constructor(value: T) {
+            this.value = value;
+          }
+          
+          getValue(): T {
+            return this.value;
+          }
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.strictEqual(result.structure.classes.length, 1);
+      assert.strictEqual(result.structure.classes[0].name, 'Container');
+    });
+
+    test('should parse TypeScript enums', () => {
+      const code = `
+        enum Color {
+          Red,
+          Green,
+          Blue
+        }
+        
+        function getColorName(color: Color): string {
+          return Color[color];
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      assert.strictEqual(result.structure.functions.length, 1);
+      assert.ok(result.linesOfCode > 0);
+    });
+
+    test('should parse TypeScript decorators', () => {
+      const code = `
+        function log(target: any, key: string) {
+          console.log(\`\${key} was called\`);
+        }
+        
+        class Service {
+          @log
+          doSomething() {
+            return 'done';
+          }
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      assert.strictEqual(result.structure.classes.length, 1);
+      assert.strictEqual(result.structure.functions.length, 1);
+    });
+
+    test('should parse TypeScript namespaces', () => {
+      const code = `
+        namespace Utils {
+          export function helper() {
+            return 'help';
+          }
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      assert.ok(result.linesOfCode > 0);
+    });
+
+    test('should parse TSX components', () => {
+      const code = `
+        import React from 'react';
+        
+        interface Props {
+          title: string;
+          onClick: () => void;
+        }
+        
+        export const Button: React.FC<Props> = ({ title, onClick }) => {
+          return <button onClick={onClick}>{title}</button>;
+        };
+      `;
+      const result = parseTypeScriptFile('Button.tsx', code);
+      
+      assert.strictEqual(result.fileType, 'tsx');
+      assert.ok(result.structure.imports.length > 0);
+    });
+  });
+
+  suite('Complexity Calculation Accuracy', () => {
+    test('should accurately calculate complexity for nested conditionals', () => {
+      const code = `
+        function complexLogic(a, b, c) {
+          if (a > 0) {
+            if (b > 0) {
+              if (c > 0) {
+                return a + b + c;
+              }
+            }
+          }
+          return 0;
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Base (1) + 3 if statements = 4
+      assert.strictEqual(result.complexity.cyclomatic, 4);
+      assert.strictEqual(result.complexity.decisionPoints, 3);
+    });
+
+    test('should calculate complexity for switch statements', () => {
+      const code = `
+        function handleAction(action) {
+          switch (action) {
+            case 'start':
+              return 'starting';
+            case 'stop':
+              return 'stopping';
+            case 'pause':
+              return 'pausing';
+            default:
+              return 'unknown';
+          }
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Base (1) + 3 case statements = 4
+      assert.ok(result.complexity.cyclomatic >= 4);
+    });
+
+    test('should calculate complexity for loops', () => {
+      const code = `
+        function processArray(arr) {
+          for (let i = 0; i < arr.length; i++) {
+            if (arr[i] > 0) {
+              console.log(arr[i]);
+            }
+          }
+          
+          while (arr.length > 0) {
+            arr.pop();
+          }
+          
+          do {
+            console.log('once');
+          } while (false);
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Base (1) + for (1) + if (1) + while (1) + do-while (1) = 5
+      assert.ok(result.complexity.cyclomatic >= 5);
+    });
+
+    test('should calculate complexity for logical operators', () => {
+      const code = `
+        function validate(user) {
+          if (user && user.name && user.email) {
+            return true;
+          }
+          
+          if (user.age > 18 || user.hasPermission) {
+            return true;
+          }
+          
+          return false;
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Base (1) + if (1) + && (2) + if (1) + || (1) = 6
+      assert.ok(result.complexity.cyclomatic >= 6);
+    });
+
+    test('should calculate complexity for ternary operators', () => {
+      const code = `
+        function getStatus(value) {
+          return value > 0 ? 'positive' : value < 0 ? 'negative' : 'zero';
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Base (1) + 2 ternary operators = 3
+      assert.ok(result.complexity.cyclomatic >= 3);
+    });
+
+    test('should calculate cognitive complexity', () => {
+      const file: FileASTAnalysis = {
+        filePath: 'test.js',
+        fileType: 'js',
+        linesOfCode: 50,
+        structure: { classes: [], functions: [], imports: [], exports: [] },
+        complexity: { cyclomatic: 10, decisionPoints: 6 },
+        callGraph: []
+      };
+
+      const cognitive = calculateCognitiveComplexity(file);
+      
+      // Cognitive = cyclomatic + floor(decisionPoints / 3)
+      // 10 + floor(6/3) = 10 + 2 = 12
+      assert.strictEqual(cognitive, 12);
+    });
+  });
+
+  suite('Malformed Code Handling', () => {
+    test('should handle JavaScript syntax errors gracefully', () => {
+      const code = `
+        function broken( {
+          return "this won't parse";
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.ok(result.errors);
+      assert.ok(result.errors.length > 0);
+      assert.strictEqual(result.fileType, 'js');
+      assert.ok(result.linesOfCode > 0);
+    });
+
+    test('should handle unclosed brackets', () => {
+      const code = `
+        function test() {
+          if (true) {
+            console.log('missing closing bracket');
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.ok(result.errors);
+      assert.ok(result.errors.length > 0);
+    });
+
+    test('should handle invalid JSX', () => {
+      const code = `
+        function Component() {
+          return <div>
+            <span>Unclosed tag
+          </div>;
+        }
+      `;
+      const result = parseJavaScriptFile('test.jsx', code);
+      
+      assert.ok(result.errors);
+      assert.ok(result.errors.length > 0);
+    });
+
+    test('should handle TypeScript type errors gracefully', () => {
+      const code = `
+        function add(a: number, b: number): string {
+          return a + b; // Type mismatch
+        }
+      `;
+      const result = parseTypeScriptFile('test.ts', code);
+      
+      // ts-morph may not catch type errors, but should parse structure
+      assert.strictEqual(result.fileType, 'ts');
+      assert.strictEqual(result.structure.functions.length, 1);
+    });
+
+    test('should handle incomplete class definitions', () => {
+      const code = `
+        class Incomplete {
+          method1() {
+            // Missing closing brace
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      assert.ok(result.errors);
+      assert.ok(result.errors.length > 0);
+    });
+
+    test('should handle empty files', () => {
+      const code = '';
+      const result = parseJavaScriptFile('empty.js', code);
+      
+      assert.strictEqual(result.fileType, 'js');
+      assert.strictEqual(result.linesOfCode, 1);
+      assert.strictEqual(result.structure.functions.length, 0);
+    });
+
+    test('should handle files with only comments', () => {
+      const code = `
+        // This is a comment
+        /* This is a block comment */
+      `;
+      const result = parseJavaScriptFile('comments.js', code);
+      
+      assert.strictEqual(result.fileType, 'js');
+      assert.strictEqual(result.structure.functions.length, 0);
+      assert.ok(result.linesOfCode > 0);
+    });
+
+    test('should handle mixed valid and invalid code', () => {
+      const code = `
+        function valid() {
+          return 'ok';
+        }
+        
+        function invalid( {
+          // Syntax error
+        }
+        
+        function alsoValid() {
+          return 'also ok';
+        }
+      `;
+      const result = parseJavaScriptFile('test.js', code);
+      
+      // Should capture the error
+      assert.ok(result.errors);
+      assert.ok(result.errors.length > 0);
+    });
+  });
+
+  suite('findCircularDependencies', () => {
+    test('should detect simple circular dependency', () => {
+      const analysis: ASTAnalysis = {
+        files: [],
+        totalLOC: 0,
+        averageComplexity: 0,
+        dependencyGraph: [
+          { source: 'a.js', target: 'b.js', importType: 'named', identifiers: [] },
+          { source: 'b.js', target: 'a.js', importType: 'named', identifiers: [] }
+        ],
+        analyzedAt: new Date()
+      };
+
+      const cycles = findCircularDependencies(analysis);
+      
+      assert.ok(cycles.length > 0);
+    });
+
+    test('should detect complex circular dependency chain', () => {
+      const analysis: ASTAnalysis = {
+        files: [],
+        totalLOC: 0,
+        averageComplexity: 0,
+        dependencyGraph: [
+          { source: 'a.js', target: 'b.js', importType: 'named', identifiers: [] },
+          { source: 'b.js', target: 'c.js', importType: 'named', identifiers: [] },
+          { source: 'c.js', target: 'a.js', importType: 'named', identifiers: [] }
+        ],
+        analyzedAt: new Date()
+      };
+
+      const cycles = findCircularDependencies(analysis);
+      
+      assert.ok(cycles.length > 0);
+    });
+
+    test('should not detect false positives', () => {
+      const analysis: ASTAnalysis = {
+        files: [],
+        totalLOC: 0,
+        averageComplexity: 0,
+        dependencyGraph: [
+          { source: 'a.js', target: 'b.js', importType: 'named', identifiers: [] },
+          { source: 'b.js', target: 'c.js', importType: 'named', identifiers: [] },
+          { source: 'c.js', target: 'd.js', importType: 'named', identifiers: [] }
+        ],
+        analyzedAt: new Date()
+      };
+
+      const cycles = findCircularDependencies(analysis);
+      
+      assert.strictEqual(cycles.length, 0);
+    });
+  });
+
+  suite('extractExports', () => {
+    test('should extract all exports from files', () => {
+      const analysis: ASTAnalysis = {
+        files: [
+          {
+            filePath: 'utils.js',
+            fileType: 'js',
+            linesOfCode: 20,
+            structure: {
+              classes: [],
+              functions: [],
+              imports: [],
+              exports: [
+                { name: 'helper', type: 'named' },
+                { name: 'default', type: 'default' }
+              ]
+            },
+            complexity: { cyclomatic: 1, decisionPoints: 0 },
+            callGraph: []
+          }
+        ],
+        totalLOC: 20,
+        averageComplexity: 1,
+        dependencyGraph: [],
+        analyzedAt: new Date()
+      };
+
+      const exports = extractExports(analysis);
+      
+      assert.ok(exports.has('utils.js'));
+      assert.strictEqual(exports.get('utils.js')!.length, 2);
     });
   });
 });
