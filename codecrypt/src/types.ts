@@ -156,3 +156,102 @@ export interface ResurrectionResult {
   /** Any errors encountered */
   errors?: string[];
 }
+
+/**
+ * Function signature extracted from AST
+ */
+export interface FunctionSignature {
+  /** Function name */
+  name: string;
+  /** Parameter names and types */
+  parameters: Array<{ name: string; type?: string }>;
+  /** Return type if available */
+  returnType?: string;
+  /** Whether function is async */
+  isAsync: boolean;
+  /** Whether function is exported */
+  isExported: boolean;
+  /** Location in source file */
+  location: { start: number; end: number };
+}
+
+/**
+ * Module dependency relationship
+ */
+export interface ModuleDependency {
+  /** Source module path */
+  source: string;
+  /** Target module path */
+  target: string;
+  /** Type of import (default, named, namespace) */
+  importType: 'default' | 'named' | 'namespace' | 'dynamic';
+  /** Imported identifiers */
+  identifiers: string[];
+}
+
+/**
+ * Cyclomatic complexity metrics
+ */
+export interface ComplexityMetrics {
+  /** Cyclomatic complexity score */
+  cyclomatic: number;
+  /** Cognitive complexity score */
+  cognitive?: number;
+  /** Number of decision points */
+  decisionPoints: number;
+}
+
+/**
+ * Code structure information
+ */
+export interface CodeStructure {
+  /** Classes defined in the file */
+  classes: Array<{
+    name: string;
+    methods: string[];
+    properties: string[];
+    isExported: boolean;
+  }>;
+  /** Functions defined in the file */
+  functions: FunctionSignature[];
+  /** Imports in the file */
+  imports: ModuleDependency[];
+  /** Exports from the file */
+  exports: Array<{ name: string; type: 'default' | 'named' }>;
+}
+
+/**
+ * AST analysis result for a single file
+ */
+export interface FileASTAnalysis {
+  /** File path relative to repository root */
+  filePath: string;
+  /** File type (js, ts, jsx, tsx) */
+  fileType: 'js' | 'ts' | 'jsx' | 'tsx';
+  /** Lines of code */
+  linesOfCode: number;
+  /** Code structure */
+  structure: CodeStructure;
+  /** Complexity metrics */
+  complexity: ComplexityMetrics;
+  /** Call graph (function calls within this file) */
+  callGraph: Array<{ caller: string; callee: string }>;
+  /** Any parsing errors */
+  errors?: string[];
+}
+
+/**
+ * Complete AST analysis for a repository
+ */
+export interface ASTAnalysis {
+  /** Analysis results for each file */
+  files: FileASTAnalysis[];
+  /** Total lines of code */
+  totalLOC: number;
+  /** Average complexity */
+  averageComplexity: number;
+  /** Module dependency graph */
+  dependencyGraph: ModuleDependency[];
+  /** Timestamp when analysis was performed */
+  analyzedAt: Date;
+}
