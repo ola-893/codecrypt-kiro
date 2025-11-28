@@ -50,6 +50,42 @@ export interface TransformationLogEntry {
 }
 
 /**
+ * Resurrection plan item representing a single update operation
+ */
+export interface ResurrectionPlanItem {
+  /** Package name to update */
+  packageName: string;
+  /** Current version */
+  currentVersion: string;
+  /** Target version to update to */
+  targetVersion: string;
+  /** Priority level (higher = more important) */
+  priority: number;
+  /** Reason for the update */
+  reason: string;
+  /** Whether this update fixes security vulnerabilities */
+  fixesVulnerabilities: boolean;
+  /** Number of vulnerabilities fixed */
+  vulnerabilityCount: number;
+}
+
+/**
+ * Complete resurrection plan
+ */
+export interface ResurrectionPlan {
+  /** Ordered list of updates to perform */
+  items: ResurrectionPlanItem[];
+  /** Total number of updates */
+  totalUpdates: number;
+  /** Number of security patches */
+  securityPatches: number;
+  /** Strategy used for planning */
+  strategy: 'conservative' | 'moderate' | 'aggressive';
+  /** Timestamp when plan was generated */
+  generatedAt: Date;
+}
+
+/**
  * Main context object for the resurrection process
  */
 export interface ResurrectionContext {
@@ -67,6 +103,8 @@ export interface ResurrectionContext {
   repoPath?: string;
   /** Name of the resurrection branch */
   resurrectionBranch?: string;
+  /** Resurrection plan with ordered updates */
+  resurrectionPlan?: ResurrectionPlan;
 }
 
 /**

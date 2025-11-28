@@ -197,3 +197,49 @@ export async function getCommitHistory(
     );
   }
 }
+
+/**
+ * Create and checkout a new Git branch for resurrection
+ * Branch name format: codecrypt/resurrection-<timestamp>
+ * 
+ * @param repoPath Path to the cloned repository
+ * @returns Name of the created branch
+ */
+export async function createResurrectionBranch(repoPath: string): Promise<string> {
+  logger.info('Creating resurrection branch');
+  
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    
+    // Generate branch name with timestamp
+    const timestamp = Date.now();
+    const branchName = `codecrypt/resurrection-${timestamp}`;
+    
+    logger.info(`Branch name: ${branchName}`);
+    
+    // Create and checkout the new branch
+    await execFileAsync('git', ['checkout', '-b', branchName], { cwd: repoPath });
+    
+    logger.info(`Successfully created and checked out branch: ${branchName}`);
+    
+    // Verify we're on the new branch
+    const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: repoPath });
+    const currentBranch = stdout.trim();
+    
+    if (currentBranch !== branchName) {
+      throw new Error(`Branch verification failed: expected ${branchName}, got ${currentBranch}`);
+    }
+    
+    logger.info(`Branch verification successful: ${currentBranch}`);
+    
+    return branchName;
+    
+  } catch (error: any) {
+    throw new CodeCryptError(
+      `Failed to create resurrection branch: ${error.message}`,
+      'GIT_BRANCH_ERROR'
+    );
+  }
+}

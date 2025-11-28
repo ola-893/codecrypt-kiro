@@ -51,14 +51,14 @@
     - Store report in ResurrectionContext
     - _Requirements: FR-003, FR-004_
 
-- [ ] 5. Implement resurrection planning
-  - [ ] 5.1 Create resurrection plan generator
+- [x] 5. Implement resurrection planning
+  - [x] 5.1 Create resurrection plan generator
     - Generate ordered list of dependency updates
     - Prioritize security patches first
     - Use "moderate" strategy (update to latest stable)
     - _Requirements: FR-004_
   
-  - [ ] 5.2 Create Git branch for resurrection
+  - [x] 5.2 Create Git branch for resurrection
     - Generate branch name with timestamp: `codecrypt/resurrection-<timestamp>`
     - Create and checkout new branch
     - _Requirements: FR-005_

@@ -6,9 +6,10 @@
 import * as vscode from 'vscode';
 import { initializeLogger, disposeLogger } from './utils/logger';
 import { formatErrorForUser } from './utils/errors';
-import { parseGitHubUrl, fetchRepositoryMetadata, cloneRepository } from './services/github';
+import { parseGitHubUrl, fetchRepositoryMetadata, cloneRepository, createResurrectionBranch } from './services/github';
 import { analyzeRepositoryDeath, generateDeathCertificate } from './services/deathDetection';
 import { analyzeDependencies } from './services/dependencyAnalysis';
+import { generateResurrectionPlan } from './services/resurrectionPlanning';
 import { ResurrectionContext, DependencyReport } from './types';
 
 /**
@@ -122,12 +123,36 @@ export function activate(context: vscode.ExtensionContext) {
 								logger.info(`  Vulnerable: ${dependencyReport.vulnerableDependencies}`);
 								
 								progress.report({ message: 'Dependency analysis complete!' });
+								
+								// Generate resurrection plan if there are dependencies to update
+								if (dependencyReport.outdatedDependencies > 0 || dependencyReport.vulnerableDependencies > 0) {
+									progress.report({ message: 'Generating resurrection plan...' });
+									
+									const resurrectionPlan = generateResurrectionPlan(dependencyReport);
+									context.resurrectionPlan = resurrectionPlan;
+									
+									logger.info('Resurrection plan generated');
+									logger.info(`  Total updates: ${resurrectionPlan.totalUpdates}`);
+									logger.info(`  Security patches: ${resurrectionPlan.securityPatches}`);
+									
+									// Create resurrection branch
+									progress.report({ message: 'Creating resurrection branch...' });
+									const branchName = await createResurrectionBranch(repoPath);
+									context.resurrectionBranch = branchName;
+									
+									logger.info(`Resurrection branch created: ${branchName}`);
+									progress.report({ message: 'Resurrection planning complete!' });
+								} else {
+									logger.info('No updates needed - repository is up to date');
+									progress.report({ message: 'Repository is up to date!' });
+								}
+								
 							} catch (error) {
 								logger.warn('Dependency analysis failed - repository may not be npm-based', error);
 								progress.report({ message: 'Skipping dependency analysis (not an npm project)' });
 							}
 							
-							// TODO: Implement resurrection logic in subsequent tasks
+							// TODO: Implement automated resurrection in subsequent tasks
 							
 						} catch (error) {
 							logger.error('Failed during resurrection process', error);
@@ -157,6 +182,17 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					if (vulnerable > 0) {
 						message += `, ${vulnerable} vulnerable`;
+					}
+				}
+				
+				// Add resurrection plan info if available
+				if (context.resurrectionPlan) {
+					message += `\n🧟 Resurrection plan: ${context.resurrectionPlan.totalUpdates} updates planned`;
+					if (context.resurrectionPlan.securityPatches > 0) {
+						message += ` (${context.resurrectionPlan.securityPatches} security patches)`;
+					}
+					if (context.resurrectionBranch) {
+						message += `\n🌿 Branch: ${context.resurrectionBranch}`;
 					}
 				}
 				
