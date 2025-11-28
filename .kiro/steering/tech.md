@@ -2,72 +2,79 @@
 
 ## 1. Core Technology Stack
 
-- **Orchestration & Logic:** Kiro Native Tool. The entire workflow, agentic logic, and state management will be implemented using the Kiro SDK and platform.
-- **Primary Language:** TypeScript. The Kiro tool itself will be developed in TypeScript, leveraging its strong typing to manage the complex data structures involved in code analysis and transformation.
-- **AST & Code Transformation:** Abstract Syntax Tree (AST) libraries will be used for robust code analysis and modernization.
-  - **JavaScript/TypeScript:** `Babel` or `ts-morph` for parsing and programmatic code modification.
-  - **Python:** `AST` module (built-in) for analysis and `LibCST` for concrete syntax tree modifications.
-  - **Other Languages:** Appropriate AST manipulation libraries will be integrated as support is expanded.
-- **LLM Integration:** Large Language Models will be used for summarization, code explanation, and migration guide discovery, accessed via Kiro's native capabilities or a dedicated MCP server.
+- **Orchestration & Logic:** Kiro Native Tool (TypeScript).
+- **AST & Code Transformation:**
+  - **Hybrid Model:** The system uses a powerful dual-layer approach.
+    - **Layer 1 (Deterministic):** Abstract Syntax Tree (AST) libraries (`Babel`, `ts-morph`) for precise, structural analysis and code manipulation.
+    - **Layer 2 (Semantic):** Large Language Models (LLMs) to understand developer intent, explain code, and suggest idiomatic modernizations.
+- **Real-time Frontend:** A web-based UI (likely using React or Vue) will be required to host the various real-time visualization components.
+- **Client-Side Visualization & Audio:**
+  - **3D Graphics:** `Three.js` (potentially with `React Three Fiber`) for rendering the interactive 3D code city.
+  - **2D Charting:** `Chart.js` for the live metrics dashboard.
+  - **Speech Synthesis:** The browser's native `Web Speech API`.
+  - **Music Synthesis:** `Tone.js` for generating the "Resurrection Symphony."
+- **Containerization:** `Docker` for creating isolated, historical testing environments.
 
 ## 2. Kiro Integration Strategy
 
-CodeCrypt is designed to be a showcase of the Kiro platform's capabilities, deeply integrating with its core protocols.
-
 ### 2.1. Model Context Protocol (MCP) Integration
 
-MCP servers provide the agent with secure, reliable access to external services ("tools").
+CodeCrypt will leverage several MCP servers to interact with external systems.
 
 - **`github_server` (Essential):**
-  - **Purpose:** To interact with the GitHub API.
-  - **Key Capabilities:**
-    - `fetch_repository_metadata`: Get repository details, languages, stars, etc.
-    - `analyze_commit_history`: Retrieve commit logs to determine activity levels.
-    - `clone_repositories`: Perform a `git clone` to the agent's workspace.
-    - `create_resurrection_branches`: Push the new branch to the origin repository or a fork.
-    - `create_pull_request`: Automatically generate a PR with the resurrection report.
+  - **Purpose:** Full interaction with GitHub repositories.
+  - **Key Capabilities:** `clone_repositories`, `get_full_commit_history`, `get_file_changes_over_time`, `create_pull_request`.
 
 - **`package_registry_server` (Essential):**
-  - **Purpose:** A multiplexed server that can query various package registries (npm, PyPI, Maven Central, etc.).
+  - **Purpose:** Query various package registries (npm, PyPI, etc.).
+  - **Key Capabilities:** `check_package_versions`, `detect_deprecated_packages`.
+
+- **`docker_server` (Essential for "Time Machine" Testing):**
+  - **Purpose:** To build and manage Docker containers for side-by-side validation.
   - **Key Capabilities:**
-    - `check_package_versions`: Fetch the latest stable, LTS, and deprecated versions of a package.
-    - `find_migration_paths`: Search for official or community-provided migration guides between versions.
-    - `detect_deprecated_packages`: Identify packages that are no longer maintained.
-    - `suggest_alternatives`: Find potential replacements for deprecated packages.
+    - `create_container_from_date`: Takes a language and a date/version (e.g., `node`, `12.x`) and creates a container with that environment.
+    - `install_historical_dependencies`: Runs package manager commands within the container.
+    - `run_tests_in_container`: Executes a test command and streams the results back to the agent.
 
-- **`security_scanner_mcp` (Highly Desirable):**
-  - **Purpose:** To audit dependencies against security vulnerability databases (e.g., Snyk, npm audit).
-  - **Key Capabilities:**
-    - `audit_dependencies`: Takes a list of packages and versions and returns a list of known vulnerabilities (CVEs).
+- **`llm_server` (Essential for Hybrid Analysis):**
+  - **Purpose:** To provide semantic understanding of code snippets.
+  - **Key Capabilities:** `analyze_code_intent`, `suggest_modernization`.
 
-- **`web_search_mcp` (Highly Desirable):**
-  - **Purpose:** To find documentation, release notes, and migration guides.
-  - **Key Capabilities:**
-    - `search`: Perform a web search for queries like "`<package-name>` migration guide `v1` to `v2`".
+- **`security_scanner_mcp` (Highly Desirable):** Audits dependencies against vulnerability databases.
+- **`web_search_mcp` (Highly Desirable):** Finds documentation and migration guides.
 
-### 2.2. Agent Hooks Configuration
+### 2.2. Agent Hooks & Event-Driven Architecture
 
-Hooks allow the agent to react to events in the workflow, enabling a flexible and event-driven process.
+The agent's workflow is highly event-driven to support the real-time experience layer.
 
-- **`on_repo_scan`:** Triggered when a repository is identified. This hook initiates the entire resurrection process, from cloning to the initial "death" analysis.
-- **`on_dependency_check`:** Triggered when a dependency file (e.g., `package.json`) is found. This hook launches the deep dependency analysis as specified in `dependency_analyzer.kirospec`.
-- **`on_code_analysis`:** Triggered once the codebase is ready for static analysis. This hook initiates AST parsing, pattern matching, and the generation of the code modernization plan.
-- **`on_transformation_applied`:** A crucial hook triggered after every single dependency update or code refactor. It immediately runs tests and compilation checks to validate the change, enabling an incremental and safe transformation process.
-- **`on_error`:** A global hook that triggers rollback procedures, logs detailed error context, and attempts automated fixes.
-- **`on_resurrection_complete`:** The final hook, triggered after the validation stage passes. It orchestrates the generation of the final report, the Ghost Tour, and the pull request.
+- **Core Hooks:**
+  - `on_repo_scan`: Initiates the entire process.
+  - `on_code_analysis`: Triggers the hybrid AST + LLM analysis.
+  - `on_resurrection_complete`: Triggers the final "Time Machine" validation and report generation.
+
+- **Real-time Event Hooks (High Frequency):**
+  - These hooks are triggered by the core pipeline and consumed by the Live Experience Layer.
+  - **`on_any_transformation`:** A generic hook fired after any change (dependency update, code refactor, etc.). This is the primary trigger for the metrics pipeline.
+    - **Payload:** `{ type: 'dependency', details: { ... } }`
+  - **`on_metric_update`:** Fired by the metrics pipeline. Consumed by the Dashboard and Symphony components.
+    - **Payload:** `{ metrics: { complexity: 10, coverage: 0.8, ... } }`
+  - **`on_narration_event`:** Fired by key stages in the pipeline. Consumed by the AI Narrator.
+    - **Payload:** `{ message: "Updating React from version 16 to 18..." }`
 
 ### 2.3. Specs-Driven Development
 
-The entire logic of the agent is guided by `.kirospec` files, ensuring the implementation is transparent, modular, and directly tied to the project's goals.
+- **`resurrection_workflow.kirospec`:** Defines the main pipeline, including the new `Hybrid Analysis` and `Time Machine Validation` stages.
+- **`code_understanding.kirospec`:** A new spec that formally defines the process of combining AST and LLM analysis to produce a comprehensive modernization plan.
+- **`dependency_analyzer.kirospec`:** Focuses on the mechanics of dependency resolution.
+- **`quality_gates.kirospec`:** Defines success, now including the requirement for the Time Machine tests to pass.
+- **`report_generator.kirospec`:** Will be updated to include embedding or linking to the interactive Ghost Tour and Symphony outputs.
 
-- **`resurrection_workflow.kirospec`:** The main orchestrator, defining the high-level stages of the process.
-- **`dependency_analyzer.kirospec`:** A detailed spec that governs all logic related to analyzing and planning dependency upgrades.
-- **`code_modernizer.kirospec`:** Will contain a library of transformation patterns (e.g., "replace deprecated API call X with Y," "convert class component to functional component").
-- **`quality_gates.kirospec`:** Defines the non-negotiable success criteria (e.g., "tests must pass with >= 80% coverage," "no critical security vulnerabilities").
-- **`report_generator.kirospec`:** Specifies the structure and content of the final HTML/Markdown outputs.
+## 3. Data Management
 
-## 3. Data Persistence & State Management
-
-- **Workspace:** Each resurrection task is executed in an isolated, temporary workspace. This workspace contains the cloned repository, log files, and intermediate analysis results.
-- **Kiro Context:** The primary mechanism for in-memory state management during a run. It holds the complete state of the analysis and transformation, allowing different components to communicate and the agent to make informed decisions.
-- **Cross-Repository Knowledge Base (Future):** Successful transformation patterns and dependency compatibility information will be stored in a persistent database (e.g., a vector database) to improve the agent's performance and decision-making on future runs.
+- **Kiro Context:** The central nervous system of the agent. It will manage:
+  - **`workspace_state`:** The current repository, transformation logs, etc.
+  - **`metrics_history`:** A time-series list of metric snapshots, allowing the entire resurrection visualization to be replayed.
+- **Outputs:** The final outputs will be a collection of artifacts:
+  - The modernized Git branch.
+  - An interactive HTML report containing the Chart.js dashboard and the embedded Three.js Ghost Tour.
+  - An optional `.mp3` file of the final "Resurrection Symphony."

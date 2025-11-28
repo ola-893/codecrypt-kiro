@@ -2,71 +2,68 @@
 
 ## 1. High-Level Architecture
 
-CodeCrypt operates on a modular, pipeline-based architecture. The system is designed as an autonomous agent that takes a target repository as input and processes it through a series of distinct stages. Each stage is responsible for a specific aspect of the analysis and resurrection process, passing its output to the next stage. This design ensures separation of concerns, allows for parallel processing where possible, and makes the system extensible.
+CodeCrypt operates on a modular, event-driven architecture. The system is designed as an autonomous agent that processes a repository through a core **Analysis & Transformation Pipeline** while simultaneously streaming data to a **Live Experience Layer**. This dual-stream architecture ensures that the core logic of resurrection remains robust and verifiable, while the user-facing experience is rich, interactive, and real-time.
 
 The core architectural components are:
-- **Input Processor:** Handles various sources for identifying target repositories.
-- **Analysis Pipeline:** A multi-stage workflow that performs the core logic of the tool.
-- **Kiro Agent Core:** The central orchestrator that manages the workflow, state, and decision-making.
-- **MCP Connectors:** A set of clients for interacting with external services like GitHub and package registries.
-- **Output Generator:** Responsible for creating the final user-facing artifacts (reports, branches, etc.).
+- **Input Processor:** Identifies target repositories.
+- **Kiro Agent Core:** The central orchestrator managing the workflow, state, and decision-making.
+- **Analysis & Transformation Pipeline:** The sequential engine that performs the core work of resurrection.
+- **Live Experience Layer:** A set of components that consume events from the pipeline to generate real-time visual and audio feedback.
+- **MCP Connectors:** Clients for interacting with external services (GitHub, Docker, etc.).
 
 ## 2. Component Breakdown
 
-### 2.1. Input Processor
-- **URL Parser:** Accepts and validates direct GitHub repository URLs.
-- **GitHub Search API Client:** Interfaces with GitHub to find repositories based on topics, languages, or other criteria.
-- **Organization Scanner:** Scans all repositories within a specified GitHub organization.
-- **Local Repository Handler:** Allows CodeCrypt to operate on a codebase located on the local filesystem.
+### 2.1. Input Processor & Agent Core
+(No changes from previous version: URL Parser, GitHub Search, Org Scanner, Workflow Engine, State Manager, Decision Engine, Hook Manager).
 
-### 2.2. Kiro Agent Core
-- **Workflow Engine:** Orchestrates the execution of the analysis pipeline stages based on the `resurrection_workflow.kirospec`.
-- **State Manager:** Maintains the `kiro_context`, including workspace state (current repo analysis, logs) and cross-repository knowledge (learned patterns, compatibility matrices).
-- **Decision Engine:** An AI-powered component that makes autonomous choices based on the analysis data, user configuration, and steering documents. For example, selecting a dependency upgrade strategy or choosing a code modernization pattern.
-- **Hook Manager:** Listens for and triggers actions based on defined `agent_hooks` (e.g., `on_repo_scan`, `on_dependency_check`).
+### 2.2. Analysis & Transformation Pipeline (The "Engine")
 
-### 2.3. Analysis Pipeline Stages
+This is the core, sequential workflow for modernizing the code.
 
-The pipeline is the heart of CodeCrypt, defined by `resurrection_workflow.kirospec`.
+- **Stage 1: Death Detection:** Clones the repo and produces a `Death Certificate`.
+- **Stage 2: Hybrid Analysis:**
+  - **AST Parser:** Performs deterministic, structural analysis (function signatures, dependencies, complexity).
+  - **LLM Analyzer:** Performs probabilistic, semantic analysis (developer intent, domain concepts).
+  - **Insight Combiner:** Merges the AST and LLM outputs to create a comprehensive understanding of the code, which guides the planning stage.
+- **Stage 3: Resurrection Planning:** Creates a detailed, step-by-step `Resurrection Plan`.
+- **Stage 4: Automated Resurrection:** Executes the plan, applying transformations and committing changes to a new branch. **Crucially, this stage emits events after every action** (e.g., `dependencyUpdated`, `testRunCompleted`, `vulnerabilityFixed`).
+- **Stage 5: "Time Machine" Validation:**
+  - **Docker Environment Manager:** (via `docker_server` MCP) Spins up a container with the original environment (e.g., old Node.js version).
+  - **Parallel Test Runner:** Executes the test suite on the original codebase in the Docker container and the modernized codebase in the current environment.
+  - **Results Comparator:** Compares the outputs to validate functional equivalence and measure performance changes.
 
-- **Stage 1: Death Detection:**
-  - **Cloner:** Clones the target repository.
-  - **Activity Analyzer:** Fetches commit history, issue activity, and CI statuses via the GitHub MCP server to assess if the project is abandoned.
-  - **Output:** A `Death Certificate` and a confidence score of abandonment.
+### 2.3. Live Experience Layer (The "Show")
 
-- **Stage 2: Intent Extraction & Analysis:**
-  - **Code Structure Mapper:** Parses the file system to identify the project's language, framework, and architectural pattern (e.g., MVC, Monolith, Microservices).
-  - **Documentation Parser:** Uses NLP to analyze the `README.md` and other documentation to understand the project's original purpose.
-  - **Dependency Analyzer:** (As defined in `dependency_analyzer.kirospec`) Detects package managers, builds a full dependency graph, and assesses the status of each dependency.
-  - **Quality Assessor:** Runs linters, calculates code complexity, and estimates test coverage.
-  - **Output:** A comprehensive health report and a summary of the project's intent.
+This layer operates in parallel to the pipeline, consuming the events it emits.
 
-- **Stage 3: Resurrection Planning:**
-  - **Dependency Strategist:** Creates an ordered, safe plan for updating dependencies based on the analyzer's report and the user-selected strategy (conservative, moderate, aggressive).
-  - **Code Modernization Planner:** Identifies all necessary code transformations, from simple syntax updates to complex API migrations, and prioritizes them.
-  - **Testing Strategist:** Defines a plan to preserve, update, and augment the existing test suite.
-  - **Risk Assessor:** Estimates the probability of a successful resurrection and identifies high-risk changes that may require user approval.
-  - **Output:** A detailed, step-by-step `Resurrection Plan`.
+- **Metrics Pipeline:** A central hub that listens for all transformation events. It calculates and aggregates metrics (e.g., complexity, test coverage, vulnerabilities fixed) and stores a history of these metrics in the Kiro context.
+- **Real-time Dashboard (Chart.js):**
+  - Subscribes to metric updates from the Metrics Pipeline.
+  - Renders and animates charts in the user-facing UI.
+- **AI Narrator (Web Speech API):**
+  - Subscribes to high-level events from the pipeline (e.g., `on_dependency_update`, `on_error`).
+  - Translates these technical events into natural language and speaks them.
+- **Resurrection Symphony (Tone.js):**
+  - Subscribes to metric updates from the Metrics Pipeline.
+  - Translates numerical metrics (complexity, test coverage, etc.) into musical parameters (tempo, harmony, etc.) to generate a live, evolving soundtrack.
+- **3D Ghost Tour Generator (Three.js):**
+  - **Initial State:** Before the resurrection begins, it uses the full git history (from the `github_server` MCP) and the initial analysis to construct the entire 3D timeline of the project's life.
+  - **Live Update (Optional):** Can subscribe to transformation events to show the "resurrection" happening in real-time on the 3D model.
+  - **Final Output:** Generates the final interactive 3D visualization.
 
-- **Stage 4: Automated Resurrection:**
-  - **Git Branch Manager:** Creates and manages the `codecrypt/resurrection-{timestamp}` branch.
-  - **Transformation Engine:** Iteratively executes the resurrection plan, applying dependency updates and code transformations.
-  - **Inline Tester:** After each significant change, this component runs the relevant tests to ensure the system remains stable.
-  - **Rollback Handler:** If a change breaks compilation or tests catastrophically, this component reverts the last change and logs the error.
-  - **Output:** A Git branch containing the modernized code.
+## 3. Data Flow & Event Architecture
 
-- **Stage 5: Validation & Output Generation:**
-  - **Quality Gate:** A final validation step that ensures the resurrected code compiles, passes a threshold of tests, and has no critical security vulnerabilities.
-  - **Report Generator:** Creates the interactive HTML `Resurrection Report`.
-  - **Ghost Tour Generator:** Creates the `Ghost Tour` by combining commit history with the transformation log, providing a narrative of the project's life, death, and resurrection.
-  - **Publisher:** Handles the final output, such as creating a pull request on GitHub or creating a downloadable archive.
+1.  **Initiation:** The agent starts the **Analysis & Transformation Pipeline**.
+2.  **Analysis:** The Hybrid Analysis stage completes, providing the initial data for planning. The Git history is passed to the **3D Ghost Tour Generator**. The initial code metrics are passed to the **Metrics Pipeline** to generate the baseline "dead code" symphony and dashboard state.
+3.  **Transformation Loop:** The `Automated Resurrection` stage begins.
+    - An action is performed (e.g., `axios` is updated from v0.21 to v1.2).
+    - An event `transformation_applied` is emitted with a payload describing the change.
+4.  **Event Handling:**
+    - The **Metrics Pipeline** catches the event, recalculates metrics, and emits a `metrics_updated` event.
+    - The **AI Narrator** catches the event and says, "Updating axios from version 0.21 to 1.2."
+    - The **Dashboard** catches the `metrics_updated` event and updates the "Dependencies Updated" chart.
+    - The **Symphony** catches the `metrics_updated` event and adjusts the music to be slightly more harmonious.
+5.  **Validation:** Once the pipeline completes, the `Time Machine Validation` stage runs, providing the final proof of success.
+6.  **Finalization:** The **3D Ghost Tour Generator** packages the final interactive scene.
 
-## 3. Data Flow & State Management
-
-1.  **Initialization:** The `Input Processor` provides a repository source to the `Kiro Agent Core`.
-2.  **Cloning & Analysis:** The agent clones the repo and begins the `Analysis Pipeline`. Each stage enriches the `kiro_context` with its findings (e.g., `death_assessment`, `project_intent`, `dependency_status`).
-3.  **Planning:** The `Resurrection Planning` stage reads the analysis data from the context and produces a `Resurrection Plan`, which is also stored in the context.
-4.  **Execution:** The `Automated Resurrection` stage executes the plan, continuously updating the codebase in the resurrection branch and logging every action to the transformation history in the `kiro_context`.
-5.  **Finalization:** The `Output Generator` reads the final state, the transformation history, and the original analysis from the context to produce the final reports.
-
-This stateful, context-driven approach allows the agent to make informed decisions at every step and enables powerful features like cross-repository learning.
+This event-driven architecture decouples the core logic from the presentation, making the system robust and highly extensible.
