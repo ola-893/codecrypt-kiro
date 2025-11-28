@@ -8,7 +8,8 @@ import { initializeLogger, disposeLogger } from './utils/logger';
 import { formatErrorForUser } from './utils/errors';
 import { parseGitHubUrl, fetchRepositoryMetadata, cloneRepository } from './services/github';
 import { analyzeRepositoryDeath, generateDeathCertificate } from './services/deathDetection';
-import { ResurrectionContext } from './types';
+import { analyzeDependencies } from './services/dependencyAnalysis';
+import { ResurrectionContext, DependencyReport } from './types';
 
 /**
  * Extension activation
@@ -105,9 +106,28 @@ export function activate(context: vscode.ExtensionContext) {
 							);
 							logger.info(`Death certificate generated: ${certificatePath}`);
 							
-							progress.report({ message: 'Death detection complete!' });
+							// Analyze dependencies
+							progress.report({ message: 'Analyzing dependencies...' });
+							let dependencyReport: DependencyReport | undefined;
 							
-							// TODO: Implement dependency analysis and resurrection logic in subsequent tasks
+							try {
+								dependencyReport = await analyzeDependencies(repoPath);
+								
+								// Update context with dependency information
+								context.dependencies = dependencyReport.dependencies;
+								
+								logger.info('Dependency analysis complete');
+								logger.info(`  Total: ${dependencyReport.totalDependencies}`);
+								logger.info(`  Outdated: ${dependencyReport.outdatedDependencies}`);
+								logger.info(`  Vulnerable: ${dependencyReport.vulnerableDependencies}`);
+								
+								progress.report({ message: 'Dependency analysis complete!' });
+							} catch (error) {
+								logger.warn('Dependency analysis failed - repository may not be npm-based', error);
+								progress.report({ message: 'Skipping dependency analysis (not an npm project)' });
+							}
+							
+							// TODO: Implement resurrection logic in subsequent tasks
 							
 						} catch (error) {
 							logger.error('Failed during resurrection process', error);
@@ -116,13 +136,31 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				);
 
-				// Show appropriate message based on death analysis
+				// Show appropriate message based on analysis
 				const statusEmoji = context.isDead ? '💀' : '✅';
 				const statusText = context.isDead ? 'DEAD - Ready for resurrection!' : 'ALIVE - Recent activity detected';
 				
-				vscode.window.showInformationMessage(
-					`${statusEmoji} Repository analyzed: ${statusText}`
-				);
+				let message = `${statusEmoji} Repository analyzed: ${statusText}`;
+				
+				// Add dependency info if available
+				if (context.dependencies.length > 0) {
+					const outdated = context.dependencies.filter(d => 
+						d.latestVersion !== 'unknown' && d.currentVersion !== d.latestVersion
+					).length;
+					const vulnerable = context.dependencies.filter(d => 
+						d.vulnerabilities.length > 0
+					).length;
+					
+					message += `\n📦 Dependencies: ${context.dependencies.length} total`;
+					if (outdated > 0) {
+						message += `, ${outdated} outdated`;
+					}
+					if (vulnerable > 0) {
+						message += `, ${vulnerable} vulnerable`;
+					}
+				}
+				
+				vscode.window.showInformationMessage(message);
 				logger.show();
 
 			} catch (error) {

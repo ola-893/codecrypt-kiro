@@ -32,20 +32,20 @@
     - Store death certificate in workspace
     - _Requirements: FR-002, NFR-004_
 
-- [ ] 4. Implement dependency analysis for npm
-  - [ ] 4.1 Detect and parse package.json
+- [x] 4. Implement dependency analysis for npm
+  - [x] 4.1 Detect and parse package.json
     - Search for package.json in repository root
     - Parse dependencies and devDependencies sections
     - Handle malformed JSON with error messages
     - _Requirements: FR-003_
   
-  - [ ] 4.2 Query npm registry for package versions
+  - [x] 4.2 Query npm registry for package versions
     - Use `package_registry_server` MCP to check package versions
     - Identify outdated dependencies (current vs latest stable)
     - Check for known security vulnerabilities
     - _Requirements: FR-003_
   
-  - [ ] 4.3 Build dependency report
+  - [x] 4.3 Build dependency report
     - Create DependencyReport data structure
     - Prioritize security vulnerabilities
     - Store report in ResurrectionContext

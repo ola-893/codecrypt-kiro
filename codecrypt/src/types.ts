@@ -82,6 +82,24 @@ export interface ResurrectionConfig {
 }
 
 /**
+ * Dependency analysis report
+ */
+export interface DependencyReport {
+  /** Total number of dependencies analyzed */
+  totalDependencies: number;
+  /** Number of outdated dependencies */
+  outdatedDependencies: number;
+  /** Number of dependencies with security vulnerabilities */
+  vulnerableDependencies: number;
+  /** Total number of security vulnerabilities */
+  totalVulnerabilities: number;
+  /** List of all dependencies */
+  dependencies: DependencyInfo[];
+  /** Timestamp when the report was generated */
+  generatedAt: Date;
+}
+
+/**
  * Result of a resurrection operation
  */
 export interface ResurrectionResult {
