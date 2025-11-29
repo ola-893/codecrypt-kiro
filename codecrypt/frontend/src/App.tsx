@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useResurrection } from './context';
-import { useEventSource } from './hooks';
+import { useEventSource, useNarrationEvents } from './hooks';
 import {
   setConnected,
   updateMetrics,
@@ -18,11 +18,11 @@ import {
   LLMInsight,
   ValidationResult,
 } from './types';
-import { Dashboard } from './components';
+import { Dashboard, Narrator } from './components';
 import './styles/App.css';
 
 function App() {
-  const { dispatch } = useResurrection();
+  const { dispatch, state } = useResurrection();
   
   // Connect to SSE endpoint
   const { events, isConnected, error } = useEventSource({
@@ -39,6 +39,9 @@ function App() {
       console.log('SSE connection closed');
     },
   });
+
+  // Convert SSE events to narration events
+  const narrationEvents = useNarrationEvents(events);
 
   // Update connection status
   useEffect(() => {
@@ -95,6 +98,14 @@ function App() {
       <main className="app-main">
         <Dashboard />
       </main>
+      {/* AI Narrator - headless component for audio narration */}
+      <Narrator 
+        events={narrationEvents}
+        enabled={true}
+        rate={1.1}
+        pitch={0.9}
+        volume={1.0}
+      />
     </div>
   );
 }
