@@ -6,3 +6,4 @@ export * from './chartConfig';
 export * from './buildingGenerator';
 export * from './gitHistoryProcessor';
 export * from './ghostTourExporter';
+export * from './symphonyExporter';

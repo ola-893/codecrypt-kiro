@@ -18,7 +18,7 @@ import {
   LLMInsight,
   ValidationResult,
 } from './types';
-import { Dashboard, Narrator } from './components';
+import { Dashboard, Narrator, Symphony } from './components';
 import './styles/App.css';
 
 function App() {
@@ -105,6 +105,12 @@ function App() {
         rate={1.1}
         pitch={0.9}
         volume={1.0}
+      />
+      {/* Resurrection Symphony - headless component for music generation */}
+      <Symphony 
+        metrics={state.currentMetrics}
+        enabled={true}
+        volume={0.5}
       />
     </div>
   );

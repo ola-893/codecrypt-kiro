@@ -340,41 +340,41 @@
     - Include interactive controls
     - _Requirements: FR-007, FR-010_
   
-  - [ ]* 19.8 Write tests for 3D visualization
+  - [x] 19.8 Write tests for 3D visualization
     - Test building generation
     - Test timeline functionality
     - Test hotspot detection
     - Mock Three.js for testing
     - _Requirements: FR-007_
 
-- [ ] 20. Implement Resurrection Symphony
-  - [ ] 20.1 Set up Tone.js infrastructure
+- [x] 20. Implement Resurrection Symphony
+  - [x] 20.1 Set up Tone.js infrastructure
     - Install Tone.js library
     - Create audio context and synthesizers
     - Configure audio output
     - _Requirements: FR-008_
   
-  - [ ] 20.2 Implement metrics-to-music mapping
+  - [x] 20.2 Implement metrics-to-music mapping
     - Map complexity to tempo
     - Map test coverage to harmony/consonance
     - Map vulnerabilities to dissonance
     - Map progress to key (minor → major)
     - _Requirements: FR-008_
   
-  - [ ] 20.3 Create Symphony component
+  - [x] 20.3 Create Symphony component
     - Listen for metric_updated events
     - Generate musical parameters from metrics
     - Trigger note sequences and chords
     - Implement smooth transitions
     - _Requirements: FR-008_
   
-  - [ ] 20.4 Implement audio export (optional)
+  - [x] 20.4 Implement audio export (optional)
     - Record audio output to buffer
     - Export as WAV or MP3 file
     - Provide download link in report
     - _Requirements: FR-008, FR-010_
   
-  - [ ]* 20.5 Write tests for symphony
+  - [x] 20.5 Write tests for symphony
     - Test metrics-to-music mapping functions
     - Test audio generation
     - Mock Tone.js for testing
@@ -437,7 +437,7 @@
     - Generate explanations for planned changes
     - _Requirements: FR-004_
   
-  - [ ]* 23.3 Write tests for enhanced planning
+  - [ ] 23.3 Write tests for enhanced planning
     - Test planning with hybrid analysis
     - Test prioritization logic
     - _Requirements: FR-004_
