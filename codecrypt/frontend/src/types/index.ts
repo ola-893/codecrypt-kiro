@@ -64,3 +64,7 @@ export interface SSEEvent {
   type: EventType;
   data: MetricsSnapshot | TransformationEvent | NarrationEvent | ASTAnalysisResult | LLMInsight | ValidationResult;
 }
+
+// Re-export ghost tour types
+export type { Building, BuildingSnapshot, FileHistory, GitCommit } from './ghostTour';
+export type { TimelinePoint } from '../utils/gitHistoryProcessor';

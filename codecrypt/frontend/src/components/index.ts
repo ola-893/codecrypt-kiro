@@ -10,3 +10,4 @@ export { CoverageChart } from './CoverageChart';
 export { DependenciesChart } from './DependenciesChart';
 export { VulnerabilitiesChart } from './VulnerabilitiesChart';
 export { Narrator, useVoices } from './Narrator';
+export { GhostTour } from './GhostTour';
