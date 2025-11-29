@@ -352,3 +352,57 @@ export interface MetricsHistory {
   /** Current metrics */
   current: MetricsSnapshot;
 }
+
+/**
+ * Time Machine validation configuration
+ */
+export interface TimeMachineConfig {
+  /** Node.js version to use for original environment */
+  originalNodeVersion: string;
+  /** Path to repository */
+  repoPath: string;
+  /** Whether to run validation */
+  enabled: boolean;
+}
+
+/**
+ * Test execution result
+ */
+export interface TestExecutionResult {
+  /** Whether tests passed */
+  passed: boolean;
+  /** Exit code */
+  exitCode: number;
+  /** Standard output */
+  stdout: string;
+  /** Standard error */
+  stderr: string;
+  /** Execution time in milliseconds */
+  executionTime: number;
+  /** Number of tests run */
+  testsRun?: number;
+  /** Number of tests passed */
+  testsPassed?: number;
+  /** Number of tests failed */
+  testsFailed?: number;
+}
+
+/**
+ * Time Machine validation result
+ */
+export interface TimeMachineValidationResult {
+  /** Whether validation was successful */
+  success: boolean;
+  /** Original environment test results */
+  originalResults: TestExecutionResult;
+  /** Modernized environment test results */
+  modernResults: TestExecutionResult;
+  /** Whether the two versions are functionally equivalent */
+  functionalEquivalence: boolean;
+  /** Performance improvement percentage (positive = faster) */
+  performanceImprovement: number;
+  /** Detailed comparison report */
+  comparisonReport: string;
+  /** Any errors encountered */
+  errors?: string[];
+}

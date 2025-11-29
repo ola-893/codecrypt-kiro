@@ -1,6 +1,15 @@
 import * as assert from 'assert';
-import { generateResurrectionPlan } from '../services/resurrectionPlanning';
-import { DependencyReport, DependencyInfo } from '../types';
+import {
+	generateResurrectionPlan,
+	generateEnhancedResurrectionPlan,
+	prioritizeByComplexity,
+	identifyRefactoringOpportunities,
+	generateChangeExplanations,
+	generateModernizationStrategy,
+	prioritizeBySemanticInsights,
+	generatePlanSummary
+} from '../services/resurrectionPlanning';
+import { DependencyReport, DependencyInfo, ASTAnalysis, HybridAnalysis, LLMAnalysis } from '../types';
 
 suite('Resurrection Planning Test Suite', () => {
 	
@@ -159,5 +168,319 @@ suite('Resurrection Planning Test Suite', () => {
 		assert.strictEqual(plan.items[0].packageName, 'axios');
 		assert.strictEqual(plan.items[1].packageName, 'lodash');
 		assert.ok(plan.items[0].priority > plan.items[1].priority);
+	});
+
+	test('generateResurrectionPlan - includes structural insights with AST analysis', () => {
+		const dependency: DependencyInfo = {
+			name: 'express',
+			currentVersion: '3.0.0',
+			latestVersion: '4.18.0',
+			vulnerabilities: [],
+			updateStatus: 'pending'
+		};
+		
+		const report: DependencyReport = {
+			totalDependencies: 1,
+			outdatedDependencies: 1,
+			vulnerableDependencies: 0,
+			totalVulnerabilities: 0,
+			dependencies: [dependency],
+			generatedAt: new Date()
+		};
+		
+		const astAnalysis: ASTAnalysis = {
+			files: [
+				{
+					filePath: 'test.ts',
+					fileType: 'ts',
+					linesOfCode: 100,
+					structure: { classes: [], functions: [], imports: [], exports: [] },
+					complexity: { cyclomatic: 20, decisionPoints: 15 },
+					callGraph: []
+				}
+			],
+			totalLOC: 100,
+			averageComplexity: 20,
+			dependencyGraph: [],
+			analyzedAt: new Date()
+		};
+		
+		const plan = generateResurrectionPlan(report, astAnalysis);
+		
+		assert.ok(plan.structuralInsights);
+		assert.ok(plan.structuralInsights.highComplexityFiles);
+		assert.strictEqual(typeof plan.structuralInsights.codeSmells, 'number');
+		assert.strictEqual(typeof plan.structuralInsights.antiPatterns, 'number');
+	});
+
+	test('prioritizeByComplexity - boosts security updates in high complexity codebases', () => {
+		const securityItem = {
+			packageName: 'axios',
+			currentVersion: '0.21.0',
+			targetVersion: '1.6.0',
+			priority: 100,
+			reason: 'security',
+			fixesVulnerabilities: true,
+			vulnerabilityCount: 1
+		};
+		
+		const regularItem = {
+			packageName: 'express',
+			currentVersion: '3.0.0',
+			targetVersion: '4.18.0',
+			priority: 10,
+			reason: 'outdated',
+			fixesVulnerabilities: false,
+			vulnerabilityCount: 0
+		};
+		
+		const astAnalysis: ASTAnalysis = {
+			files: [
+				{
+					filePath: 'test.ts',
+					fileType: 'ts',
+					linesOfCode: 100,
+					structure: { classes: [], functions: [], imports: [], exports: [] },
+					complexity: { cyclomatic: 20, decisionPoints: 15 },
+					callGraph: []
+				}
+			],
+			totalLOC: 100,
+			averageComplexity: 20,
+			dependencyGraph: [],
+			analyzedAt: new Date()
+		};
+		
+		const prioritized = prioritizeByComplexity([regularItem, securityItem], astAnalysis);
+		
+		// Security item should have boosted priority
+		assert.ok(prioritized[0].fixesVulnerabilities);
+		assert.ok(prioritized[0].priority > 100);
+	});
+
+	test('identifyRefactoringOpportunities - finds high complexity files', () => {
+		const astAnalysis: ASTAnalysis = {
+			files: [
+				{
+					filePath: 'complex.ts',
+					fileType: 'ts',
+					linesOfCode: 500,
+					structure: {
+						classes: [],
+						functions: [
+							{ name: 'func1', parameters: [], returnType: 'void', isAsync: false, isExported: true, location: { start: 0, end: 100 } }
+						],
+						imports: [],
+						exports: []
+					},
+					complexity: { cyclomatic: 25, decisionPoints: 20 },
+					callGraph: []
+				}
+			],
+			totalLOC: 500,
+			averageComplexity: 25,
+			dependencyGraph: [],
+			analyzedAt: new Date()
+		};
+		
+		const opportunities = identifyRefactoringOpportunities(astAnalysis);
+		
+		assert.ok(opportunities.length > 0);
+		assert.ok(opportunities.some(o => o.description.includes('complexity')));
+	});
+
+	test('generateEnhancedResurrectionPlan - includes priority files and refactoring opportunities', () => {
+		const dependency: DependencyInfo = {
+			name: 'express',
+			currentVersion: '3.0.0',
+			latestVersion: '4.18.0',
+			vulnerabilities: [],
+			updateStatus: 'pending'
+		};
+		
+		const report: DependencyReport = {
+			totalDependencies: 1,
+			outdatedDependencies: 1,
+			vulnerableDependencies: 0,
+			totalVulnerabilities: 0,
+			dependencies: [dependency],
+			generatedAt: new Date()
+		};
+		
+		const hybridAnalysis: HybridAnalysis = {
+			astAnalysis: {
+				files: [],
+				totalLOC: 100,
+				averageComplexity: 10,
+				dependencyGraph: [],
+				analyzedAt: new Date()
+			},
+			llmAnalysis: {
+				insights: [],
+				keyDomainConcepts: ['authentication'],
+				analyzedAt: new Date()
+			},
+			combinedInsights: {
+				priorityFiles: [
+					{ filePath: 'auth.ts', reason: 'High complexity', priority: 100 }
+				],
+				refactoringOpportunities: [
+					{ filePath: 'auth.ts', description: 'Reduce complexity', impact: 'high' }
+				],
+				recommendations: ['Focus on security']
+			},
+			analyzedAt: new Date()
+		};
+		
+		const plan = generateEnhancedResurrectionPlan(report, hybridAnalysis);
+		
+		assert.ok(plan.priorityFiles);
+		assert.ok(plan.priorityFiles.length > 0);
+		assert.ok(plan.refactoringOpportunities);
+		assert.ok(plan.refactoringOpportunities.length > 0);
+	});
+
+	test('generateModernizationStrategy - extracts key focus areas from LLM insights', () => {
+		const hybridAnalysis: HybridAnalysis = {
+			astAnalysis: {
+				files: [],
+				totalLOC: 100,
+				averageComplexity: 10,
+				dependencyGraph: [],
+				analyzedAt: new Date()
+			},
+			llmAnalysis: {
+				insights: [
+					{
+						filePath: 'test.ts',
+						developerIntent: 'Handle authentication',
+						domainConcepts: ['auth'],
+						idiomaticPatterns: [],
+						antiPatterns: ['callback hell'],
+						modernizationSuggestions: ['Use async/await', 'Add TypeScript types'],
+						confidence: 0.9
+					}
+				],
+				keyDomainConcepts: ['authentication'],
+				modernizationStrategy: 'Incremental updates',
+				analyzedAt: new Date()
+			},
+			combinedInsights: {
+				priorityFiles: [],
+				refactoringOpportunities: [],
+				recommendations: ['Focus on async patterns']
+			},
+			analyzedAt: new Date()
+		};
+		
+		const strategy = generateModernizationStrategy(hybridAnalysis);
+		
+		assert.ok(strategy.strategy);
+		assert.ok(Array.isArray(strategy.keyFocus));
+		assert.ok(Array.isArray(strategy.riskAreas));
+		assert.ok(Array.isArray(strategy.recommendations));
+	});
+
+	test('prioritizeBySemanticInsights - boosts priority for packages mentioned in LLM insights', () => {
+		const item = {
+			packageName: 'axios',
+			currentVersion: '0.21.0',
+			targetVersion: '1.6.0',
+			priority: 10,
+			reason: 'outdated',
+			fixesVulnerabilities: false,
+			vulnerabilityCount: 0
+		};
+		
+		const hybridAnalysis: HybridAnalysis = {
+			astAnalysis: {
+				files: [],
+				totalLOC: 100,
+				averageComplexity: 10,
+				dependencyGraph: [],
+				analyzedAt: new Date()
+			},
+			llmAnalysis: {
+				insights: [
+					{
+						filePath: 'api.ts',
+						developerIntent: 'Make API calls',
+						domainConcepts: ['http'],
+						idiomaticPatterns: [],
+						antiPatterns: ['Using outdated axios version'],
+						modernizationSuggestions: ['Update axios to latest version'],
+						confidence: 0.9
+					}
+				],
+				keyDomainConcepts: ['http'],
+				analyzedAt: new Date()
+			},
+			combinedInsights: {
+				priorityFiles: [],
+				refactoringOpportunities: [],
+				recommendations: []
+			},
+			analyzedAt: new Date()
+		};
+		
+		const prioritized = prioritizeBySemanticInsights([item], hybridAnalysis);
+		
+		assert.ok(prioritized[0].priority > 10);
+	});
+
+	test('generatePlanSummary - creates comprehensive markdown summary', () => {
+		const plan = {
+			items: [
+				{
+					packageName: 'axios',
+					currentVersion: '0.21.0',
+					targetVersion: '1.6.0',
+					priority: 1000,
+					reason: 'security',
+					fixesVulnerabilities: true,
+					vulnerabilityCount: 1
+				}
+			],
+			totalUpdates: 1,
+			securityPatches: 1,
+			strategy: 'moderate' as const,
+			generatedAt: new Date(),
+			priorityFiles: ['auth.ts'],
+			refactoringOpportunities: [
+				{ filePath: 'auth.ts', description: 'Reduce complexity', impact: 'high' }
+			]
+		};
+		
+		const hybridAnalysis: HybridAnalysis = {
+			astAnalysis: {
+				files: [],
+				totalLOC: 100,
+				averageComplexity: 10,
+				dependencyGraph: [],
+				analyzedAt: new Date()
+			},
+			llmAnalysis: {
+				insights: [],
+				keyDomainConcepts: ['authentication'],
+				projectIntent: 'Authentication service',
+				modernizationStrategy: 'Incremental updates',
+				analyzedAt: new Date()
+			},
+			combinedInsights: {
+				priorityFiles: [{ filePath: 'auth.ts', reason: 'High complexity', priority: 100 }],
+				refactoringOpportunities: [
+					{ filePath: 'auth.ts', description: 'Reduce complexity', impact: 'high' }
+				],
+				recommendations: ['Focus on security']
+			},
+			analyzedAt: new Date()
+		};
+		
+		const summary = generatePlanSummary(plan, hybridAnalysis);
+		
+		assert.ok(summary.includes('# Resurrection Plan Summary'));
+		assert.ok(summary.includes('Project Context'));
+		assert.ok(summary.includes('Modernization Strategy'));
+		assert.ok(summary.includes('Plan Overview'));
 	});
 });
