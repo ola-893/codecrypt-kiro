@@ -217,48 +217,48 @@
     - Test event emission
     - _Requirements: FR-005_
 
-- [ ] 15. Implement Frontend Infrastructure
-  - [ ] 15.1 Set up React application
+- [x] 15. Implement Frontend Infrastructure
+  - [x] 15.1 Set up React application
     - Create React app with TypeScript
     - Set up build configuration (Webpack/Vite)
     - Configure CSS Modules with gothic theme
     - Create project structure (components, hooks, utils)
     - _Requirements: FR-005, FR-006, FR-007, FR-008_
   
-  - [ ] 15.2 Implement SSE client hook
+  - [x] 15.2 Implement SSE client hook
     - Create useEventSource custom hook
     - Handle connection, reconnection, and cleanup
     - Parse and dispatch events to application state
     - Implement error handling for connection failures
     - _Requirements: FR-005, NFR-002_
   
-  - [ ] 15.3 Set up global state management
+  - [x] 15.3 Set up global state management
     - Create Context API for shared state
     - Implement useReducer for metrics state
     - Create actions for state updates
     - _Requirements: FR-005_
   
-  - [ ]* 15.4 Write unit tests for frontend infrastructure
+  - [x] 15.4 Write unit tests for frontend infrastructure
     - Test useEventSource hook
     - Test state management
     - Test event parsing
     - _Requirements: FR-005_
 
 - [ ] 16. Implement Live Metrics Dashboard
-  - [ ] 16.1 Install and configure Chart.js
+  - [x] 16.1 Install and configure Chart.js
     - Install Chart.js and React wrapper
     - Create chart configuration utilities
     - Set up responsive chart containers
     - _Requirements: FR-005_
   
-  - [ ] 16.2 Create Dashboard component
+  - [x] 16.2 Create Dashboard component
     - Build main dashboard layout
     - Create Counter components for statistics
     - Create ProgressBar component
     - Implement real-time chart updates
     - _Requirements: FR-005_
   
-  - [ ] 16.3 Implement time-series charts
+  - [x] 16.3 Implement time-series charts
     - Create line chart for complexity over time
     - Create line chart for test coverage over time
     - Create bar chart for dependencies updated

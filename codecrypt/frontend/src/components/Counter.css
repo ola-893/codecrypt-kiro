@@ -1,0 +1,73 @@
+.counter {
+  background: rgba(31, 41, 55, 0.8);
+  border: 2px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.3s ease;
+  min-width: 200px;
+}
+
+.counter:hover {
+  border-color: rgba(139, 92, 246, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+.counter--animating {
+  animation: pulse 0.5s ease-in-out;
+}
+
+.counter__icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.counter__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.counter__value {
+  font-size: 2rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  line-height: 1;
+}
+
+.counter__label {
+  font-size: 0.875rem;
+  color: rgba(243, 244, 246, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: 'Courier New', monospace;
+}
+
+/* Color variants */
+.counter--primary .counter__value {
+  color: #8b5cf6;
+}
+
+.counter--success .counter__value {
+  color: #10b981;
+}
+
+.counter--warning .counter__value {
+  color: #f59e0b;
+}
+
+.counter--danger .counter__value {
+  color: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
