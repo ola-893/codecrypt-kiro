@@ -244,7 +244,7 @@
     - Test event parsing
     - _Requirements: FR-005_
 
-- [ ] 16. Implement Live Metrics Dashboard
+- [x] 16. Implement Live Metrics Dashboard
   - [x] 16.1 Install and configure Chart.js
     - Install Chart.js and React wrapper
     - Create chart configuration utilities
@@ -265,7 +265,7 @@
     - Create area chart for vulnerabilities fixed
     - _Requirements: FR-005_
   
-  - [ ]* 16.4 Write component tests for dashboard
+  - [x] 16.4 Write component tests for dashboard
     - Test chart rendering
     - Test real-time updates
     - Test responsive behavior
@@ -286,7 +286,7 @@
     - Handle speech synthesis errors gracefully
     - _Requirements: FR-006_
   
-  - [ ]* 17.3 Write tests for narrator
+  - [ ] 17.3 Write tests for narrator
     - Test speech queue management
     - Test event handling
     - Mock Web Speech API

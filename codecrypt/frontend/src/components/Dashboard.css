@@ -126,6 +126,21 @@
   color: rgba(243, 244, 246, 0.4);
 }
 
+/* Chart container styling */
+.chart-container {
+  background: rgba(31, 41, 55, 0.5);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  height: 350px;
+  transition: all 0.3s ease;
+}
+
+.chart-container:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.1);
+}
+
 @keyframes float {
   0%, 100% {
     transform: translateY(0);
