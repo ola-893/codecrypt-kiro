@@ -442,8 +442,8 @@
     - Test prioritization logic
     - _Requirements: FR-004_
 
-- [ ] 24. Update Reporting with New Features
-  - [ ] 24.1 Enhance Resurrection Report
+- [x] 24. Update Reporting with New Features
+  - [x] 24.1 Enhance Resurrection Report
     - Add AST analysis insights section
     - Add LLM semantic insights section
     - Add complexity metrics (before/after)
@@ -452,14 +452,14 @@
     - Include performance comparison data
     - _Requirements: FR-010_
   
-  - [ ] 24.2 Embed visualizations in report
+  - [x] 24.2 Embed visualizations in report
     - Embed or link to 3D Ghost Tour HTML
     - Embed Chart.js dashboard screenshots
     - Link to Resurrection Symphony audio file
     - Create interactive HTML report
     - _Requirements: FR-010_
   
-  - [ ]* 24.3 Write tests for enhanced reporting
+  - [x] 24.3 Write tests for enhanced reporting
     - Test report generation with all sections
     - Test visualization embedding
     - _Requirements: FR-010_
