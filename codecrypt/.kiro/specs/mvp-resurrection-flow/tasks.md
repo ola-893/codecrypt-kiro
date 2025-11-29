@@ -292,7 +292,7 @@
     - Mock Web Speech API
     - _Requirements: FR-006_
 
-- [ ] 18. Checkpoint - Ensure all tests pass
+- [x] 18. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 19. Implement 3D Ghost Tour Visualization
