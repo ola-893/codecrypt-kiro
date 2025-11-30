@@ -2,22 +2,17 @@
  * Metrics calculation service for tracking resurrection progress
  */
 
-import { EventEmitter } from 'events';
 import {
   MetricsSnapshot,
   MetricsHistory,
   ResurrectionContext,
   ASTAnalysis,
-  DependencyInfo,
+  ResurrectionEvent,
+  TransformationAppliedEventData,
+  ASTAnalysisCompleteEventData,
+  TestCompletedEventData,
 } from '../types';
-
-/**
- * Event payload for transformation applied events
- */
-export interface TransformationAppliedEvent {
-  type: 'dependency_update' | 'code_transformation' | 'test_run';
-  details: any;
-}
+import { ResurrectionEventEmitter } from './eventEmitter';
 
 /**
  * Service for calculating and managing metrics throughout the resurrection process
@@ -25,12 +20,12 @@ export interface TransformationAppliedEvent {
 export class MetricsService {
   private metricsHistory: MetricsSnapshot[] = [];
   private baseline: MetricsSnapshot | null = null;
-  private eventEmitter: EventEmitter;
+  private eventEmitter: ResurrectionEventEmitter;
   private context: ResurrectionContext | null = null;
   private astAnalysis: ASTAnalysis | null = null;
   private testCoverage: number = 0;
 
-  constructor(eventEmitter: EventEmitter) {
+  constructor(eventEmitter: ResurrectionEventEmitter) {
     this.eventEmitter = eventEmitter;
     this.setupEventListeners();
   }
@@ -40,20 +35,20 @@ export class MetricsService {
    */
   private setupEventListeners(): void {
     // Listen for transformation_applied events
-    this.eventEmitter.on('transformation_applied', (event: TransformationAppliedEvent) => {
+    this.eventEmitter.onTransformationApplied((event: ResurrectionEvent<TransformationAppliedEventData>) => {
       this.handleTransformationApplied(event);
     });
 
     // Listen for AST analysis complete events
-    this.eventEmitter.on('ast_analysis_complete', (analysis: ASTAnalysis) => {
-      this.astAnalysis = analysis;
+    this.eventEmitter.onASTAnalysisComplete((event: ResurrectionEvent<ASTAnalysisCompleteEventData>) => {
+      this.astAnalysis = event.data.analysis;
       this.recalculateAndEmitMetrics();
     });
 
     // Listen for test completion events
-    this.eventEmitter.on('test_completed', (result: { coverage?: number }) => {
-      if (result.coverage !== undefined) {
-        this.testCoverage = result.coverage;
+    this.eventEmitter.onTestCompleted((event: ResurrectionEvent<TestCompletedEventData>) => {
+      if (event.data.coverage !== undefined) {
+        this.testCoverage = event.data.coverage;
         this.recalculateAndEmitMetrics();
       }
     });
@@ -62,7 +57,7 @@ export class MetricsService {
   /**
    * Handle transformation applied events
    */
-  private handleTransformationApplied(event: TransformationAppliedEvent): void {
+  private handleTransformationApplied(event: ResurrectionEvent<TransformationAppliedEventData>): void {
     this.recalculateAndEmitMetrics();
   }
 
@@ -81,7 +76,19 @@ export class MetricsService {
     );
 
     this.addSnapshot(newMetrics);
-    this.eventEmitter.emit('metric_updated', newMetrics);
+    
+    // Calculate delta from baseline
+    const delta = this.baseline ? {
+      depsUpdated: newMetrics.depsUpdated - this.baseline.depsUpdated,
+      vulnsFixed: newMetrics.vulnsFixed - this.baseline.vulnsFixed,
+      complexityChange: newMetrics.complexity - this.baseline.complexity,
+      coverageChange: newMetrics.coverage - this.baseline.coverage,
+    } : undefined;
+
+    this.eventEmitter.emitMetricUpdated({
+      ...newMetrics,
+      delta,
+    });
   }
 
   /**
@@ -141,7 +148,7 @@ export class MetricsService {
   setBaseline(snapshot: MetricsSnapshot): void {
     this.baseline = snapshot;
     this.metricsHistory = [snapshot];
-    this.eventEmitter.emit('metric_updated', snapshot);
+    this.eventEmitter.emitMetricUpdated(snapshot);
   }
 
   /**
@@ -236,6 +243,6 @@ export class MetricsService {
 /**
  * Create a new metrics service instance
  */
-export function createMetricsService(eventEmitter: EventEmitter): MetricsService {
+export function createMetricsService(eventEmitter: ResurrectionEventEmitter): MetricsService {
   return new MetricsService(eventEmitter);
 }

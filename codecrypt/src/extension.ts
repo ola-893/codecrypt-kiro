@@ -13,6 +13,7 @@ import { generateResurrectionPlan } from './services/resurrectionPlanning';
 import { ResurrectionContext, DependencyReport } from './types';
 import { withProgressReporter, ResurrectionStage } from './services/progress';
 import { initializeSecureConfig } from './services/secureConfig';
+import { createResurrectionOrchestrator, ResurrectionOrchestrator } from './services/resurrectionOrchestrator';
 
 /**
  * Extension activation
@@ -196,12 +197,68 @@ export function activate(context: vscode.ExtensionContext) {
 								reporter.reportProgress('Skipping dependency analysis (not an npm project)');
 							}
 							
+							// Stage 5: Execute resurrection with orchestrator
+							if (context.resurrectionPlan && dependencyReport) {
+								logger.subsection('Stage 5: Executing Resurrection');
+								reporter.reportStage(
+									ResurrectionStage.UPDATING,
+									'Executing resurrection plan'
+								);
+
+								try {
+									// Create orchestrator
+									const orchestrator = await createResurrectionOrchestrator(context, {
+										enableSSE: true,
+										ssePort: 3000,
+										enableHybridAnalysis: true,
+										enableTimeMachine: true,
+										enableLLM: true,
+									});
+
+									// Show SSE server URL
+									const sseURL = orchestrator.getSSEServerURL();
+									if (sseURL) {
+										logger.info(`Frontend can connect to: ${sseURL}`);
+									}
+
+									// Run hybrid analysis
+									reporter.reportProgress('Running hybrid analysis');
+									const hybridAnalysis = await orchestrator.runHybridAnalysis();
+									if (hybridAnalysis) {
+										logger.info('Hybrid analysis complete');
+										logger.info(`Priority files: ${hybridAnalysis.combinedInsights.priorityFiles.length}`);
+									}
+
+									// Execute resurrection plan
+									reporter.reportProgress('Executing resurrection plan');
+									await orchestrator.executeResurrectionPlan(dependencyReport);
+
+									// Run Time Machine validation
+									reporter.reportProgress('Running Time Machine validation');
+									const timeMachineResults = await orchestrator.runTimeMachineValidation();
+									if (timeMachineResults) {
+										logger.info(`Time Machine validation: ${timeMachineResults.success ? 'PASSED' : 'FAILED'}`);
+									}
+
+									// Generate final report
+									reporter.reportProgress('Generating final report');
+									const finalReport = await orchestrator.generateReport();
+									logger.info('Final report generated');
+
+									// Stop orchestrator
+									await orchestrator.stop();
+
+									logger.info('Resurrection execution complete');
+								} catch (error) {
+									logger.error('Failed to execute resurrection', error);
+									throw error;
+								}
+							}
+							
 							// Report completion
 							logger.subsection('Resurrection Process Complete');
 							const statusEmoji = context.isDead ? '💀' : '✅';
-							reporter.reportComplete(true, `${statusEmoji} Analysis complete`);
-							
-							// TODO: Implement automated resurrection in subsequent tasks
+							reporter.reportComplete(true, `${statusEmoji} Resurrection complete`);
 							
 						} catch (error) {
 							logger.error('Failed during resurrection process', error);

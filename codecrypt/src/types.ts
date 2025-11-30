@@ -406,3 +406,140 @@ export interface TimeMachineValidationResult {
   /** Any errors encountered */
   errors?: string[];
 }
+
+/**
+ * Event types for the resurrection process
+ */
+export type ResurrectionEventType =
+  | 'transformation_applied'
+  | 'dependency_updated'
+  | 'test_completed'
+  | 'metric_updated'
+  | 'narration'
+  | 'ast_analysis_complete'
+  | 'llm_insight'
+  | 'validation_complete';
+
+/**
+ * Base event interface
+ */
+export interface ResurrectionEvent<T = any> {
+  /** Event type */
+  type: ResurrectionEventType;
+  /** Event timestamp */
+  timestamp: number;
+  /** Event payload */
+  data: T;
+}
+
+/**
+ * Transformation applied event payload
+ */
+export interface TransformationAppliedEventData {
+  /** Type of transformation */
+  transformationType: 'dependency_update' | 'code_transformation' | 'test_run';
+  /** Package name (for dependency updates) */
+  packageName?: string;
+  /** Version information (for dependency updates) */
+  version?: {
+    from: string;
+    to: string;
+  };
+  /** Transformation details */
+  details: any;
+  /** Whether the transformation was successful */
+  success: boolean;
+}
+
+/**
+ * Dependency updated event payload
+ */
+export interface DependencyUpdatedEventData {
+  /** Package name */
+  packageName: string;
+  /** Previous version */
+  previousVersion: string;
+  /** New version */
+  newVersion: string;
+  /** Whether the update was successful */
+  success: boolean;
+  /** Number of vulnerabilities fixed */
+  vulnerabilitiesFixed: number;
+}
+
+/**
+ * Test completed event payload
+ */
+export interface TestCompletedEventData {
+  /** Test type */
+  testType: 'unit' | 'integration' | 'e2e';
+  /** Whether tests passed */
+  passed: boolean;
+  /** Test coverage percentage */
+  coverage?: number;
+  /** Number of tests run */
+  testsRun?: number;
+  /** Number of tests passed */
+  testsPassed?: number;
+  /** Number of tests failed */
+  testsFailed?: number;
+  /** Execution time in milliseconds */
+  executionTime: number;
+}
+
+/**
+ * Metric updated event payload
+ */
+export interface MetricUpdatedEventData extends MetricsSnapshot {
+  /** Delta from baseline */
+  delta?: {
+    depsUpdated: number;
+    vulnsFixed: number;
+    complexityChange: number;
+    coverageChange: number;
+  };
+}
+
+/**
+ * Narration event payload
+ */
+export interface NarrationEventData {
+  /** Message to narrate */
+  message: string;
+  /** Priority level */
+  priority?: 'low' | 'medium' | 'high';
+  /** Category of narration */
+  category?: 'info' | 'success' | 'warning' | 'error';
+}
+
+/**
+ * AST analysis complete event payload
+ */
+export interface ASTAnalysisCompleteEventData {
+  /** AST analysis results */
+  analysis: ASTAnalysis;
+  /** Summary message */
+  summary: string;
+}
+
+/**
+ * LLM insight event payload
+ */
+export interface LLMInsightEventData {
+  /** File path being analyzed */
+  filePath: string;
+  /** Insight from LLM */
+  insight: LLMInsight;
+  /** Summary message */
+  summary: string;
+}
+
+/**
+ * Validation complete event payload
+ */
+export interface ValidationCompleteEventData {
+  /** Validation results */
+  results: TimeMachineValidationResult;
+  /** Summary message */
+  summary: string;
+}

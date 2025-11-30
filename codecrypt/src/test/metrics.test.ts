@@ -3,8 +3,8 @@
  */
 
 import * as assert from 'assert';
-import { EventEmitter } from 'events';
 import { MetricsService, createMetricsService } from '../services/metrics';
+import { ResurrectionEventEmitter } from '../services/eventEmitter';
 import {
   ResurrectionContext,
   ASTAnalysis,
@@ -13,11 +13,11 @@ import {
 } from '../types';
 
 suite('Metrics Service Tests', () => {
-  let eventEmitter: EventEmitter;
+  let eventEmitter: ResurrectionEventEmitter;
   let metricsService: MetricsService;
 
   setup(() => {
-    eventEmitter = new EventEmitter();
+    eventEmitter = new ResurrectionEventEmitter();
     metricsService = createMetricsService(eventEmitter);
   });
 
@@ -165,8 +165,9 @@ suite('Metrics Service Tests', () => {
         progress: 0,
       };
 
-      eventEmitter.once('metric_updated', (data) => {
-        assert.deepStrictEqual(data, baseline);
+      eventEmitter.once('metric_updated', (event) => {
+        assert.strictEqual(event.type, 'metric_updated');
+        assert.deepStrictEqual(event.data, baseline);
         done();
       });
 
@@ -353,15 +354,17 @@ suite('Metrics Service Tests', () => {
       // Update dependency status
       context.dependencies[0].updateStatus = 'success';
 
-      eventEmitter.once('metric_updated', (metrics: MetricsSnapshot) => {
-        assert.strictEqual(metrics.depsUpdated, 1);
-        assert.strictEqual(metrics.progress, 100);
+      eventEmitter.once('metric_updated', (event) => {
+        assert.strictEqual(event.data.depsUpdated, 1);
+        assert.strictEqual(event.data.progress, 100);
         done();
       });
 
-      eventEmitter.emit('transformation_applied', {
-        type: 'dependency_update',
+      eventEmitter.emitTransformationApplied({
+        transformationType: 'dependency_update',
+        packageName: 'pkg1',
         details: { package: 'pkg1' },
+        success: true,
       });
     });
 
@@ -383,13 +386,16 @@ suite('Metrics Service Tests', () => {
         analyzedAt: new Date(),
       };
 
-      eventEmitter.once('metric_updated', (metrics: MetricsSnapshot) => {
-        assert.strictEqual(metrics.loc, 1200);
-        assert.strictEqual(metrics.complexity, 7.5);
+      eventEmitter.once('metric_updated', (event) => {
+        assert.strictEqual(event.data.loc, 1200);
+        assert.strictEqual(event.data.complexity, 7.5);
         done();
       });
 
-      eventEmitter.emit('ast_analysis_complete', astAnalysis);
+      eventEmitter.emitASTAnalysisComplete({
+        analysis: astAnalysis,
+        summary: 'AST analysis complete',
+      });
     });
 
     test('should listen for test_completed events', (done) => {
@@ -402,12 +408,17 @@ suite('Metrics Service Tests', () => {
 
       metricsService.initialize(context);
 
-      eventEmitter.once('metric_updated', (metrics: MetricsSnapshot) => {
-        assert.strictEqual(metrics.coverage, 85);
+      eventEmitter.once('metric_updated', (event) => {
+        assert.strictEqual(event.data.coverage, 85);
         done();
       });
 
-      eventEmitter.emit('test_completed', { coverage: 85 });
+      eventEmitter.emitTestCompleted({
+        testType: 'unit',
+        passed: true,
+        coverage: 85,
+        executionTime: 1000,
+      });
     });
 
     test('should store metrics history for visualization', (done) => {
@@ -490,7 +501,7 @@ suite('Metrics Service Tests', () => {
 
   suite('createMetricsService', () => {
     test('should create a new metrics service instance', () => {
-      const emitter = new EventEmitter();
+      const emitter = new ResurrectionEventEmitter();
       const service = createMetricsService(emitter);
 
       assert.ok(service instanceof MetricsService);

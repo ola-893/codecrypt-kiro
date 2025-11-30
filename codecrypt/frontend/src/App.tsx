@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useResurrection } from './context';
 import { useEventSource, useNarrationEvents } from './hooks';
 import {
@@ -23,6 +23,7 @@ import './styles/App.css';
 
 function App() {
   const { dispatch, state } = useResurrection();
+  const [isInitializing, setIsInitializing] = useState(true);
   
   // Connect to SSE endpoint
   const { events, isConnected, error } = useEventSource({
@@ -47,6 +48,12 @@ function App() {
   useEffect(() => {
     dispatch(setConnected(isConnected));
   }, [isConnected, dispatch]);
+
+  // Handle initialization
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitializing(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Process incoming events
   useEffect(() => {
@@ -81,6 +88,19 @@ function App() {
     }
   }, [events, dispatch]);
 
+  // Show loading screen during initialization
+  if (isInitializing) {
+    return (
+      <div className="app loading">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <h2 className="loading-text">Awakening CodeCrypt...</h2>
+          <p className="loading-subtext">Preparing the resurrection chamber</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -88,14 +108,31 @@ function App() {
         <p className="tagline">Resurrection Dashboard</p>
         <div className="connection-status">
           {isConnected ? (
-            <span className="status-connected">● Connected</span>
+            <span className="status-connected" title="Connected to resurrection server" aria-label="Connected">
+              ● Connected
+            </span>
           ) : (
-            <span className="status-disconnected">○ Disconnected</span>
+            <span className="status-disconnected" title="Waiting for connection" aria-label="Disconnected">
+              ○ Disconnected
+            </span>
           )}
         </div>
-        {error && <div className="connection-error">{error}</div>}
+        {error && (
+          <div className="connection-error" role="alert">
+            <strong>Connection Error:</strong> {error}
+            <br />
+            <small>Make sure the backend server is running on port 3000.</small>
+          </div>
+        )}
       </header>
       <main className="app-main">
+        {!isConnected && !error && (
+          <div className="waiting-message">
+            <div className="pulse-icon">⏳</div>
+            <p>Waiting for resurrection process to begin...</p>
+            <small>Start a resurrection from VS Code to see live updates</small>
+          </div>
+        )}
         <Dashboard />
       </main>
       {/* AI Narrator - headless component for audio narration */}
