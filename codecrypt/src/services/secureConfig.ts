@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
 
-const logger = getLogger();
+
 
 /**
  * Configuration keys for secure storage
@@ -17,7 +17,8 @@ export enum SecureConfigKey {
   NPM_TOKEN = 'codecrypt.npm.token',
   MCP_GITHUB_TOKEN = 'codecrypt.mcp.github.token',
   MCP_REGISTRY_TOKEN = 'codecrypt.mcp.registry.token',
-  ANTHROPIC_API_KEY = 'codecrypt.anthropicApiKey'
+  ANTHROPIC_API_KEY = 'codecrypt.anthropicApiKey',
+  GEMINI_API_KEY = 'codecrypt.geminiApiKey'
 }
 
 /**
@@ -50,6 +51,7 @@ export class SecureConfigManager {
    * @param value Secret value to store
    */
   async storeSecret(key: SecureConfigKey, value: string): Promise<void> {
+    const logger = getLogger();
     try {
       await this.secretStorage.store(key, value);
       logger.info(`Stored secret for key: ${key}`);
@@ -68,6 +70,7 @@ export class SecureConfigManager {
    * @returns Secret value or undefined if not found
    */
   async getSecret(key: SecureConfigKey): Promise<string | undefined> {
+    const logger = getLogger();
     try {
       const value = await this.secretStorage.get(key);
       if (value) {
@@ -88,6 +91,7 @@ export class SecureConfigManager {
    * @param key Configuration key
    */
   async deleteSecret(key: SecureConfigKey): Promise<void> {
+    const logger = getLogger();
     try {
       await this.secretStorage.delete(key);
       logger.info(`Deleted secret for key: ${key}`);
@@ -105,6 +109,7 @@ export class SecureConfigManager {
    * @returns GitHub token or undefined
    */
   async getGitHubToken(): Promise<string | undefined> {
+    const logger = getLogger();
     // First try to get from secure storage
     let token = await this.getSecret(SecureConfigKey.GITHUB_TOKEN);
     
@@ -124,6 +129,7 @@ export class SecureConfigManager {
    * @returns npm token or undefined
    */
   async getNpmToken(): Promise<string | undefined> {
+    const logger = getLogger();
     // First try to get from secure storage
     let token = await this.getSecret(SecureConfigKey.NPM_TOKEN);
     
@@ -172,6 +178,7 @@ export class SecureConfigManager {
    * @returns Anthropic API key or undefined
    */
   async getAnthropicApiKey(): Promise<string | undefined> {
+    const logger = getLogger();
     // First try to get from secure storage
     let apiKey = await this.getSecret(SecureConfigKey.ANTHROPIC_API_KEY);
     
@@ -216,10 +223,60 @@ export class SecureConfigManager {
   }
 
   /**
+   * Get Gemini API key with fallback to environment variable
+   * @returns Gemini API key or undefined
+   */
+  async getGeminiApiKey(): Promise<string | undefined> {
+    const logger = getLogger();
+    // First try to get from secure storage
+    let apiKey = await this.getSecret(SecureConfigKey.GEMINI_API_KEY);
+    
+    if (!apiKey) {
+      // Fallback to environment variable
+      apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        logger.info('Using Gemini API key from environment variable');
+      }
+    }
+    
+    return apiKey;
+  }
+
+  /**
+   * Prompt user for Gemini API key and store it securely
+   */
+  async promptAndStoreGeminiApiKey(): Promise<string | undefined> {
+    const apiKey = await vscode.window.showInputBox({
+      prompt: 'Enter your Google Gemini API Key',
+      password: true,
+      placeHolder: 'AIza...',
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        if (!value) {
+          return 'API key is required';
+        }
+        if (!value.startsWith('AIza')) {
+          return 'Invalid Gemini API key format (should start with AIza)';
+        }
+        return null;
+      }
+    });
+
+    if (apiKey) {
+      await this.storeSecret(SecureConfigKey.GEMINI_API_KEY, apiKey);
+      vscode.window.showInformationMessage('Gemini API key stored securely');
+      return apiKey;
+    }
+
+    return undefined;
+  }
+
+  /**
    * Get MCP server configuration from VS Code settings
    * Validates that no secrets are exposed in the configuration
    */
   getMCPServerConfig(): MCPServerConfig[] {
+    const logger = getLogger();
     const config = vscode.workspace.getConfiguration('codecrypt');
     const mcpServers = config.get<MCPServerConfig[]>('mcpServers', []);
 
@@ -279,6 +336,7 @@ export class SecureConfigManager {
    * Validate MCP server connection without exposing credentials
    */
   async validateMCPConnection(serverName: string): Promise<boolean> {
+    const logger = getLogger();
     logger.info(`Validating MCP server connection: ${serverName}`);
     
     try {
@@ -317,6 +375,7 @@ export class SecureConfigManager {
    * Clear all stored secrets (for testing or reset)
    */
   async clearAllSecrets(): Promise<void> {
+    const logger = getLogger();
     logger.info('Clearing all stored secrets');
     
     for (const key of Object.values(SecureConfigKey)) {
@@ -340,6 +399,7 @@ let secureConfigManager: SecureConfigManager | undefined;
  * Initialize the secure config manager
  */
 export function initializeSecureConfig(context: vscode.ExtensionContext): SecureConfigManager {
+  const logger = getLogger();
   secureConfigManager = new SecureConfigManager(context);
   logger.info('Secure configuration manager initialized');
   return secureConfigManager;

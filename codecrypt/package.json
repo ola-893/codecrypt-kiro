@@ -3,13 +3,21 @@
   "displayName": "codecrypt",
   "description": "Bring dead code back to life with AI-powered modernization and dependency resurrection",
   "version": "0.0.1",
+  "publisher": "codecrypt",
   "engines": {
-    "vscode": "^1.106.1"
+    "vscode": "^1.103.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:codecrypt.resurrectRepository",
+    "onCommand:codecrypt.helloWorld",
+    "onCommand:codecrypt.configureGitHubToken",
+    "onCommand:codecrypt.configureGeminiApiKey",
+    "onCommand:codecrypt.switchLLMProvider",
+    "onCommand:codecrypt.clearSecrets"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -29,6 +37,16 @@
         "category": "CodeCrypt"
       },
       {
+        "command": "codecrypt.configureGeminiApiKey",
+        "title": "🔑 CodeCrypt: Configure Gemini API Key",
+        "category": "CodeCrypt"
+      },
+      {
+        "command": "codecrypt.switchLLMProvider",
+        "title": "🔄 CodeCrypt: Switch LLM Provider",
+        "category": "CodeCrypt"
+      },
+      {
         "command": "codecrypt.clearSecrets",
         "title": "🗑️ CodeCrypt: Clear All Secrets",
         "category": "CodeCrypt"
@@ -37,6 +55,15 @@
     "configuration": {
       "title": "CodeCrypt",
       "properties": {
+        "codecrypt.llmProvider": {
+          "type": "string",
+          "enum": [
+            "anthropic",
+            "gemini"
+          ],
+          "default": "anthropic",
+          "description": "LLM provider to use for semantic code analysis (anthropic or gemini)"
+        },
         "codecrypt.mcpServers": {
           "type": "array",
           "default": [],
@@ -106,6 +133,7 @@
     "@babel/parser": "^7.28.5",
     "@babel/traverse": "^7.28.5",
     "@babel/types": "^7.28.5",
+    "@google/generative-ai": "^0.21.0",
     "@types/dockerode": "^3.3.47",
     "dockerode": "^4.0.9",
     "ts-morph": "^27.0.2"

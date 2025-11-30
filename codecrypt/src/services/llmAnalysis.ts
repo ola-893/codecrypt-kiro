@@ -4,6 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import * as vscode from 'vscode';
 import { LLMAnalysis, LLMInsight, ASTAnalysis, FileASTAnalysis } from '../types';
 import { CodeCryptError } from '../utils/errors';
@@ -21,6 +22,20 @@ interface LLMConfig {
   model?: string;
   /** Maximum tokens for response */
   maxTokens?: number;
+  /** Request timeout in milliseconds */
+  timeout?: number;
+  /** Maximum retry attempts */
+  maxRetries?: number;
+}
+
+/**
+ * Configuration for Gemini client
+ */
+interface GeminiConfig {
+  /** API key for Google Gemini */
+  apiKey: string;
+  /** Model to use (default: gemini-pro) */
+  model?: string;
   /** Request timeout in milliseconds */
   timeout?: number;
   /** Maximum retry attempts */
@@ -137,34 +152,168 @@ export class LLMClient {
 }
 
 /**
+ * Gemini LLM client with retry logic and timeout handling
+ */
+export class GeminiClient {
+  private genAI: GoogleGenerativeAI;
+  private model: GenerativeModel;
+  private config: Required<GeminiConfig>;
+
+  constructor(config: GeminiConfig) {
+    this.config = {
+      apiKey: config.apiKey,
+      model: config.model || 'gemini-pro',
+      timeout: config.timeout || 30000, // 30 seconds
+      maxRetries: config.maxRetries || 3,
+    };
+
+    this.genAI = new GoogleGenerativeAI(this.config.apiKey);
+    this.model = this.genAI.getGenerativeModel({ model: this.config.model });
+
+    logger.info('Gemini client initialized', {
+      model: this.config.model,
+      timeout: this.config.timeout,
+      maxRetries: this.config.maxRetries,
+    });
+  }
+
+  /**
+   * Analyze code with retry logic and exponential backoff
+   */
+  async analyzeCode(prompt: string, retryCount = 0): Promise<string> {
+    try {
+      logger.info(`Gemini analysis attempt ${retryCount + 1}/${this.config.maxRetries + 1}`);
+
+      // Create a timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), this.config.timeout);
+      });
+
+      // Race between the API call and timeout
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        timeoutPromise,
+      ]);
+
+      const response = result.response;
+      const text = response.text();
+
+      if (!text) {
+        throw new CodeCryptError('No text content in Gemini response');
+      }
+
+      return text;
+    } catch (error) {
+      const isRetryable = this.isRetryableError(error);
+      const shouldRetry = isRetryable && retryCount < this.config.maxRetries;
+
+      if (shouldRetry) {
+        const backoffMs = this.calculateBackoff(retryCount);
+        logger.warn(`Gemini request failed, retrying in ${backoffMs}ms`, error);
+        await this.sleep(backoffMs);
+        return this.analyzeCode(prompt, retryCount + 1);
+      }
+
+      logger.error('Gemini analysis failed', error);
+      throw new CodeCryptError(
+        `Gemini analysis failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Check if error is retryable
+   */
+  private isRetryableError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      // Retry on rate limits, timeouts, and server errors
+      return (
+        message.includes('rate limit') ||
+        message.includes('timeout') ||
+        message.includes('503') ||
+        message.includes('504') ||
+        message.includes('500') ||
+        message.includes('502')
+      );
+    }
+    return false;
+  }
+
+  /**
+   * Calculate exponential backoff delay
+   */
+  private calculateBackoff(retryCount: number): number {
+    // Exponential backoff: 1s, 2s, 4s, 8s, etc.
+    const baseDelay = 1000;
+    const maxDelay = 30000; // Cap at 30 seconds
+    const delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+    // Add jitter to avoid thundering herd
+    return delay + Math.random() * 1000;
+  }
+
+  /**
+   * Sleep utility for backoff
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
+
+/**
  * Create LLM client from VS Code configuration
  */
-export async function createLLMClient(context: vscode.ExtensionContext): Promise<LLMClient> {
+export async function createLLMClient(context: vscode.ExtensionContext): Promise<LLMClient | GeminiClient> {
   const { SecureConfigManager } = await import('./secureConfig.js');
   const configManager = new SecureConfigManager(context);
 
-  // Try to get API key from secure storage
-  const apiKey = await configManager.getAnthropicApiKey();
+  // Get LLM provider from configuration (default to anthropic for backward compatibility)
+  const config = vscode.workspace.getConfiguration('codecrypt');
+  const provider = config.get<string>('llmProvider', 'anthropic');
 
-  if (!apiKey) {
-    // Prompt user to configure API key
-    const configuredKey = await configManager.promptAndStoreAnthropicApiKey();
-    if (!configuredKey) {
-      throw new CodeCryptError(
-        'Anthropic API key not configured. LLM analysis will be skipped.'
-      );
+  logger.info(`Creating LLM client for provider: ${provider}`);
+
+  if (provider === 'gemini') {
+    // Try to get Gemini API key from secure storage
+    const apiKey = await configManager.getGeminiApiKey();
+
+    if (!apiKey) {
+      // Prompt user to configure API key
+      const configuredKey = await configManager.promptAndStoreGeminiApiKey();
+      if (!configuredKey) {
+        throw new CodeCryptError(
+          'Gemini API key not configured. LLM analysis will be skipped.'
+        );
+      }
+      return new GeminiClient({ apiKey: configuredKey });
     }
-    return new LLMClient({ apiKey: configuredKey });
-  }
 
-  return new LLMClient({ apiKey });
+    return new GeminiClient({ apiKey });
+  } else {
+    // Default to Anthropic
+    // Try to get API key from secure storage
+    const apiKey = await configManager.getAnthropicApiKey();
+
+    if (!apiKey) {
+      // Prompt user to configure API key
+      const configuredKey = await configManager.promptAndStoreAnthropicApiKey();
+      if (!configuredKey) {
+        throw new CodeCryptError(
+          'Anthropic API key not configured. LLM analysis will be skipped.'
+        );
+      }
+      return new LLMClient({ apiKey: configuredKey });
+    }
+
+    return new LLMClient({ apiKey });
+  }
 }
 
 /**
  * Analyze a single file for semantic insights
  */
 export async function analyzeFile(
-  client: LLMClient,
+  client: LLMClient | GeminiClient,
   fileContent: string,
   filePath: string,
   astAnalysis?: FileASTAnalysis
@@ -256,7 +405,7 @@ Respond with ONLY valid JSON, no markdown formatting or additional text.`;
  * Analyze project intent from README and package.json
  */
 async function analyzeProjectIntent(
-  client: LLMClient,
+  client: LLMClient | GeminiClient,
   repoPath: string
 ): Promise<{ intent?: string; strategy?: string }> {
   const fs = require('fs');
@@ -325,7 +474,7 @@ Respond with ONLY valid JSON.`;
  * Analyze entire repository for semantic insights
  */
 export async function analyzeRepository(
-  client: LLMClient,
+  client: LLMClient | GeminiClient,
   repoPath: string,
   astAnalysis: ASTAnalysis,
   progress?: vscode.Progress<{ message?: string; increment?: number }>

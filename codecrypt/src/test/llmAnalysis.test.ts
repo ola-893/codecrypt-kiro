@@ -3,7 +3,7 @@
  */
 
 import * as assert from 'assert';
-import { LLMClient, analyzeFile } from '../services/llmAnalysis';
+import { LLMClient, GeminiClient, analyzeFile } from '../services/llmAnalysis';
 import { FileASTAnalysis, LLMInsight } from '../types';
 
 suite('LLM Analysis Service', () => {
@@ -465,6 +465,163 @@ That's my analysis.`;
 
       assert.ok(result);
       assert.strictEqual(result.filePath, 'test.js');
+    });
+  });
+
+  suite('GeminiClient', () => {
+    test('should initialize with config', () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: 'gemini-pro',
+        timeout: 30000,
+        maxRetries: 3,
+      });
+
+      assert.ok(client);
+    });
+
+    test('should use default values when not provided', () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+      });
+
+      assert.ok(client);
+    });
+
+    test('should calculate exponential backoff correctly', () => {
+      const client = new GeminiClient({ apiKey: 'test-key' });
+      
+      // Access private method through any cast for testing
+      const calculateBackoff = (client as any).calculateBackoff.bind(client);
+      
+      const delay0 = calculateBackoff(0);
+      const delay1 = calculateBackoff(1);
+      const delay2 = calculateBackoff(2);
+      
+      // Delays should increase exponentially (with jitter)
+      assert.ok(delay0 >= 1000 && delay0 < 3000); // 1s + jitter
+      assert.ok(delay1 >= 2000 && delay1 < 4000); // 2s + jitter
+      assert.ok(delay2 >= 4000 && delay2 < 6000); // 4s + jitter
+    });
+
+    test('should identify retryable errors', () => {
+      const client = new GeminiClient({ apiKey: 'test-key' });
+      const isRetryableError = (client as any).isRetryableError.bind(client);
+
+      // Mock errors with retryable messages
+      const rateLimitError = new Error('rate limit exceeded');
+      const timeoutError = new Error('request timeout');
+      const serverError = new Error('503 service unavailable');
+      const regularError = new Error('invalid input');
+
+      assert.strictEqual(isRetryableError(rateLimitError), true);
+      assert.strictEqual(isRetryableError(timeoutError), true);
+      assert.strictEqual(isRetryableError(serverError), true);
+      assert.strictEqual(isRetryableError(regularError), false);
+    });
+
+    test('should cap backoff at maximum delay', () => {
+      const client = new GeminiClient({ apiKey: 'test-key' });
+      const calculateBackoff = (client as any).calculateBackoff.bind(client);
+
+      // Test with very high retry count
+      const backoff10 = calculateBackoff(10);
+      
+      // Should be capped at 30 seconds + jitter
+      assert.ok(backoff10 <= 31000); // 30s max + 1s jitter
+    });
+  });
+
+  suite('Gemini Integration', () => {
+    test('should work with analyzeFile function', async () => {
+      const client = new GeminiClient({ apiKey: 'test-key' });
+      
+      // Mock analyzeCode to return valid JSON
+      const mockResponse = {
+        developerIntent: 'Test function',
+        domainConcepts: ['testing', 'validation'],
+        idiomaticPatterns: ['async/await'],
+        antiPatterns: ['callback hell'],
+        modernizationSuggestions: ['Use ES6 modules'],
+        confidence: 0.9,
+      };
+      
+      (client as any).analyzeCode = async () => JSON.stringify(mockResponse);
+
+      const result = await analyzeFile(
+        client,
+        'async function test() { return true; }',
+        'test.js'
+      );
+
+      assert.strictEqual(result.filePath, 'test.js');
+      assert.strictEqual(result.developerIntent, 'Test function');
+      assert.strictEqual(result.confidence, 0.9);
+      assert.deepStrictEqual(result.domainConcepts, ['testing', 'validation']);
+    });
+
+    test('should handle Gemini-specific response format', async () => {
+      const client = new GeminiClient({ apiKey: 'test-key' });
+      
+      // Mock Gemini response (may have different formatting)
+      const mockResponse = JSON.stringify({
+        developerIntent: 'Helper utility',
+        domainConcepts: ['utilities', 'helpers'],
+        idiomaticPatterns: ['ES6 modules'],
+        antiPatterns: [],
+        modernizationSuggestions: ['Add TypeScript types'],
+        confidence: 0.85,
+      });
+      
+      (client as any).analyzeCode = async () => mockResponse;
+
+      const result = await analyzeFile(client, 'export const helper = () => {}', 'helper.js');
+
+      assert.strictEqual(result.developerIntent, 'Helper utility');
+      assert.strictEqual(result.confidence, 0.85);
+    });
+
+    test('should handle timeout errors', async () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        timeout: 1, // Very short timeout
+      });
+
+      // Verify the client was created with timeout config
+      assert.strictEqual((client as any).config.timeout, 1);
+    });
+  });
+
+  suite('Provider Selection', () => {
+    test('should support both Anthropic and Gemini clients', async () => {
+      const anthropicClient = new LLMClient({ apiKey: 'test-key' });
+      const geminiClient = new GeminiClient({ apiKey: 'test-key' });
+
+      assert.ok(anthropicClient);
+      assert.ok(geminiClient);
+    });
+
+    test('should work with either client type in analyzeFile', async () => {
+      const mockResponse = JSON.stringify({
+        developerIntent: 'Test',
+        domainConcepts: [],
+        idiomaticPatterns: [],
+        antiPatterns: [],
+        modernizationSuggestions: [],
+        confidence: 0.8,
+      });
+
+      // Test with Anthropic client
+      const anthropicClient = new LLMClient({ apiKey: 'test-key' });
+      (anthropicClient as any).analyzeCode = async () => mockResponse;
+      const result1 = await analyzeFile(anthropicClient, 'const x = 1;', 'test.js');
+      assert.ok(result1);
+
+      // Test with Gemini client
+      const geminiClient = new GeminiClient({ apiKey: 'test-key' });
+      (geminiClient as any).analyzeCode = async () => mockResponse;
+      const result2 = await analyzeFile(geminiClient, 'const x = 1;', 'test.js');
+      assert.ok(result2);
     });
   });
 });

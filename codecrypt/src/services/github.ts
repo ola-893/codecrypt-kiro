@@ -9,7 +9,22 @@ import * as fs from 'fs/promises';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
 
+import { getSecureConfig } from './secureConfig';
+import { spawnSync } from 'child_process';
+
 const logger = getLogger();
+
+/**
+ * Checks if the GitHub CLI (gh) is installed and available in the system's PATH.
+ * @returns {boolean} True if gh is installed, false otherwise.
+ */
+function isGitHubCliInstalled(): boolean {
+  // Use spawnSync to synchronously check for the command.
+  // The 'which' or 'command -v' equivalent in Node.js is to try spawning the process
+  // and check for the 'ENOENT' error.
+  const result = spawnSync('gh', ['--version'], { stdio: 'ignore' });
+  return result.error === undefined;
+}
 
 /**
  * Repository metadata from GitHub
@@ -46,7 +61,17 @@ export async function fetchRepositoryMetadata(
   retries = 3
 ): Promise<RepositoryMetadata> {
   logger.info(`Fetching metadata for ${owner}/${repo}`);
+
+  if (!isGitHubCliInstalled()) {
+    const errorMessage = 'GitHub CLI (gh) not found. Please install it to continue. See: https://cli.github.com/';
+    logger.error(errorMessage);
+    vscode.window.showErrorMessage(errorMessage);
+    throw new CodeCryptError(errorMessage, 'DEPENDENCY_MISSING');
+  }
   
+  const secureConfig = getSecureConfig();
+  const token = await secureConfig.getGitHubToken();
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       // Use GitHub CLI to fetch repository metadata
@@ -60,7 +85,12 @@ export async function fetchRepositoryMetadata(
         `${owner}/${repo}`,
         '--json',
         'name,owner,description,defaultBranchRef,primaryLanguage,stargazerCount,pushedAt'
-      ]);
+      ], {
+        env: {
+          ...process.env,
+          GH_TOKEN: token,
+        },
+      });
       
       const data = JSON.parse(stdout);
       
@@ -309,6 +339,17 @@ export async function createPullRequest(
   retries = 3
 ): Promise<string> {
   logger.info(`Creating pull request for ${owner}/${repo}`);
+
+  if (!isGitHubCliInstalled()) {
+    const errorMessage = 'GitHub CLI (gh) not found. Please install it to create pull requests. See: https://cli.github.com/';
+    logger.error(errorMessage);
+    vscode.window.showErrorMessage(errorMessage);
+    throw new CodeCryptError(errorMessage, 'DEPENDENCY_MISSING');
+  }
+
+  const secureConfig = getSecureConfig();
+  const token = await secureConfig.getGitHubToken();
+
   logger.info(`  Head: ${branchName}`);
   logger.info(`  Base: ${baseBranch}`);
   logger.info(`  Title: ${title}`);
@@ -328,7 +369,12 @@ export async function createPullRequest(
         '--base', baseBranch,
         '--title', title,
         '--body', body
-      ]);
+      ], {
+        env: {
+          ...process.env,
+          GH_TOKEN: token,
+        },
+      });
       
       const prUrl = stdout.trim();
       

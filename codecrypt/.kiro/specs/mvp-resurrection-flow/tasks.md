@@ -519,54 +519,54 @@
 - [x] 27. Final Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 28. Add Google Gemini API Support
-  - [ ] 28.1 Install Google Generative AI SDK
+- [x] 28. Add Google Gemini API Support
+  - [x] 28.1 Install Google Generative AI SDK
     - Add @google/generative-ai package to dependencies
     - Update package.json and install dependencies
     - _Requirements: FR-004_
   
-  - [ ] 28.2 Extend SecureConfigManager for Gemini
+  - [x] 28.2 Extend SecureConfigManager for Gemini
     - Add GEMINI_API_KEY to SecretKey enum
     - Implement getGeminiApiKey() method
     - Implement promptAndStoreGeminiApiKey() method
     - Add fallback to GEMINI_API_KEY environment variable
     - _Requirements: NFR-003_
   
-  - [ ] 28.3 Create Gemini LLM client
+  - [x] 28.3 Create Gemini LLM client
     - Implement GeminiClient class with same interface as LLMClient
     - Support gemini-pro and gemini-pro-vision models
     - Implement retry logic with exponential backoff
     - Add timeout handling (30s per request)
     - _Requirements: FR-004, NFR-002_
   
-  - [ ] 28.4 Add LLM provider selection
+  - [x] 28.4 Add LLM provider selection
     - Add llmProvider configuration option (anthropic | gemini)
     - Update createLLMClient to support provider selection
     - Default to Anthropic for backward compatibility
     - Allow users to switch providers via VS Code settings
     - _Requirements: FR-004_
   
-  - [ ] 28.5 Update LLM analysis service
+  - [x] 28.5 Update LLM analysis service
     - Create unified LLM interface for both providers
     - Adapt prompts to work with both Anthropic and Gemini
     - Handle provider-specific response formats
     - Maintain cache compatibility across providers
     - _Requirements: FR-004_
   
-  - [ ] 28.6 Add VS Code commands for Gemini
+  - [x] 28.6 Add VS Code commands for Gemini
     - Register codecrypt.configureGeminiApiKey command
     - Add command to switch LLM provider
     - Update extension.ts with new commands
     - _Requirements: NFR-004_
   
-  - [ ]* 28.7 Write tests for Gemini integration
+  - [x] 28.7 Write tests for Gemini integration
     - Test GeminiClient initialization and API calls
     - Test provider selection logic
     - Test secure config for Gemini keys
     - Mock Gemini API for testing
     - _Requirements: FR-004, NFR-002_
   
-  - [ ] 28.8 Update documentation
+  - [x] 28.8 Update documentation
     - Add Gemini setup instructions to README
     - Document how to obtain Gemini API key
     - Add provider comparison guide

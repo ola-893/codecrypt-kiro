@@ -96,12 +96,42 @@ suite('Secure Configuration Service Tests', () => {
       assert.ok(SecureConfigKey.NPM_TOKEN);
       assert.ok(SecureConfigKey.MCP_GITHUB_TOKEN);
       assert.ok(SecureConfigKey.MCP_REGISTRY_TOKEN);
+      assert.ok(SecureConfigKey.GEMINI_API_KEY);
     });
 
     test('should have unique values', () => {
       const values = Object.values(SecureConfigKey);
       const uniqueValues = new Set(values);
       assert.strictEqual(values.length, uniqueValues.size);
+    });
+  });
+
+  suite('Gemini API Key Management', () => {
+    test('should have GEMINI_API_KEY in SecureConfigKey enum', () => {
+      assert.ok(SecureConfigKey.GEMINI_API_KEY);
+      assert.strictEqual(SecureConfigKey.GEMINI_API_KEY, 'codecrypt.geminiApiKey');
+    });
+
+    test('should detect Gemini API key pattern', () => {
+      const manager = new SecureConfigManager({} as any);
+      const result = (manager as any).looksLikeSecret(
+        'GEMINI_API_KEY',
+        'AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+      );
+      assert.strictEqual(result, true);
+    });
+
+    test('should sanitize Gemini API key in logs', () => {
+      const manager = new SecureConfigManager({} as any);
+      const env = {
+        GEMINI_API_KEY: 'AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        NODE_ENV: 'production'
+      };
+      
+      const sanitized = manager.sanitizeEnvForLogging(env);
+      
+      assert.strictEqual(sanitized.GEMINI_API_KEY, '***REDACTED***');
+      assert.strictEqual(sanitized.NODE_ENV, 'production');
     });
   });
 });
