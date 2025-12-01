@@ -31,8 +31,27 @@ This document outlines the requirements for the complete CodeCrypt Resurrection 
 - The system shall parse `package.json` to identify outdated dependencies and known security vulnerabilities.
 - It shall create a plan to update dependencies to their latest stable versions.
 
+#### FR-002a: Pre-Resurrection Cleanup
+- **Delete package-lock.json:** Before any dependency updates, the system SHALL delete the existing `package-lock.json` file if present.
+  - Old lockfiles contain references to outdated git dependencies that may fail to build with modern Node.js
+  - Old lockfiles cause npm to fetch metadata for packages that may no longer exist or have incompatible native modules
+  - Deleting the lockfile allows npm to resolve fresh dependency trees without legacy constraints
+- **Delete node_modules:** The system SHALL delete the existing `node_modules` directory if present.
+  - Stale node_modules can cause conflicts with updated dependencies
+  - Clean slate ensures reproducible dependency resolution
+- **Flag as Dead Without Running:** The system SHALL classify repositories as "dead" based on commit history alone, WITHOUT attempting to run/compile the original code.
+  - Running ancient code with modern Node.js causes native module compilation failures (e.g., `deasync`, `fsevents`)
+  - Git dependencies pointing to old commits may have incompatible build scripts
+  - Peer dependency conflicts between old and new package versions cause npm install failures
+  - The "death" status is determined by last commit date (>2 years), not by compilation status
+
 #### FR-003: Automated Resurrection & Validation
 - The system shall create a new branch for the modernized code.
+- **Pre-Update Cleanup:** Before updating any dependencies, the system SHALL:
+  1. Delete `package-lock.json` if it exists
+  2. Delete `node_modules` directory if it exists
+  3. Replace git-based dependencies (e.g., `git+https://github.com/...`) with their npm registry equivalents where available
+  4. Use `--legacy-peer-deps` flag for npm install to handle peer dependency conflicts gracefully
 - It shall iteratively update dependencies, run `npm install`, and execute validation after each update.
 - **After each dependency update:** For TypeScript projects, the system shall run compilation checks (`tsc --noEmit`) to verify the code compiles.
 - **After each dependency update:** If a test script exists, the system shall execute the test suite to verify functional correctness.

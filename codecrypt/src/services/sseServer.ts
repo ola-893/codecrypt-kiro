@@ -72,6 +72,11 @@ export class SSEServer {
         'baseline_compilation_complete',
         'final_compilation_complete',
         'resurrection_verdict',
+        // Post-resurrection validation events
+        'validation_iteration_start',
+        'validation_error_analysis',
+        'validation_fix_applied',
+        'validation_fix_outcome',
       ],
       ...config,
     };
@@ -243,6 +248,23 @@ export class SSEServer {
     // Forward resurrection_verdict events
     this.eventEmitter.onResurrectionVerdict((event) => {
       this.broadcastEvent('resurrection_verdict', event);
+    });
+
+    // Forward post-resurrection validation events
+    this.eventEmitter.onValidationIterationStart((event) => {
+      this.broadcastEvent('validation_iteration_start', event);
+    });
+
+    this.eventEmitter.onValidationErrorAnalysis((event) => {
+      this.broadcastEvent('validation_error_analysis', event);
+    });
+
+    this.eventEmitter.onValidationFixApplied((event) => {
+      this.broadcastEvent('validation_fix_applied', event);
+    });
+
+    this.eventEmitter.onValidationFixOutcome((event) => {
+      this.broadcastEvent('validation_fix_outcome', event);
     });
   }
 

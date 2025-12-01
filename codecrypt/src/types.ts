@@ -427,7 +427,12 @@ export type ResurrectionEventType =
   | 'validation_complete'
   | 'baseline_compilation_complete'
   | 'final_compilation_complete'
-  | 'resurrection_verdict';
+  | 'resurrection_verdict'
+  // Post-resurrection validation events
+  | 'validation_iteration_start'
+  | 'validation_error_analysis'
+  | 'validation_fix_applied'
+  | 'validation_fix_outcome';
 
 /**
  * Base event interface
@@ -686,3 +691,447 @@ export interface ResurrectionVerdict {
   /** List of new errors introduced during resurrection */
   newErrors: CategorizedError[];
 }
+
+
+// ============================================================================
+// Post-Resurrection Validation Types
+// ============================================================================
+
+/**
+ * Error category for post-resurrection validation errors
+ * These are different from compilation errors - they focus on dependency/installation issues
+ */
+export type PostResurrectionErrorCategory =
+  | 'dependency_not_found'
+  | 'dependency_version_conflict'
+  | 'peer_dependency_conflict'
+  | 'native_module_failure'
+  | 'lockfile_conflict'
+  | 'git_dependency_failure'
+  | 'syntax_error'
+  | 'type_error'
+  | 'unknown';
+
+/**
+ * Fix strategy types for resolving post-resurrection errors
+ */
+export type FixStrategy =
+  | { type: 'adjust_version'; package: string; newVersion: string }
+  | { type: 'legacy_peer_deps' }
+  | { type: 'remove_lockfile'; lockfile: string }
+  | { type: 'substitute_package'; original: string; replacement: string }
+  | { type: 'remove_package'; package: string }
+  | { type: 'add_resolution'; package: string; version: string }
+  | { type: 'force_install' };
+
+/**
+ * Package manager types supported by the validation system
+ */
+export type PackageManager = 'npm' | 'yarn' | 'pnpm';
+
+/**
+ * Options for the post-resurrection validation process
+ */
+export interface ValidationOptions {
+  /** Maximum number of fix-retry iterations (default: 10) */
+  maxIterations?: number;
+  /** Package manager to use (default: auto-detect) */
+  packageManager?: PackageManager | 'auto';
+  /** Override auto-detected build command */
+  buildCommand?: string;
+  /** Skip native module fixes */
+  skipNativeModules?: boolean;
+  /** Timeout for compilation in milliseconds (default: 300000 = 5 min) */
+  timeout?: number;
+}
+
+/**
+ * Result of a compilation attempt
+ */
+export interface PostResurrectionCompilationResult {
+  /** Whether compilation succeeded */
+  success: boolean;
+  /** Process exit code */
+  exitCode: number;
+  /** Standard output */
+  stdout: string;
+  /** Standard error */
+  stderr: string;
+  /** Duration in milliseconds */
+  duration: number;
+}
+
+/**
+ * Proof artifact generated on successful compilation
+ */
+export interface PostResurrectionCompilationProof {
+  /** Timestamp when compilation succeeded */
+  timestamp: Date;
+  /** Build command that was executed */
+  buildCommand: string;
+  /** Exit code (should be 0) */
+  exitCode: number;
+  /** Duration in milliseconds */
+  duration: number;
+  /** SHA-256 hash of the combined output */
+  outputHash: string;
+  /** Package manager used */
+  packageManager: PackageManager;
+  /** Number of iterations required */
+  iterationsRequired: number;
+}
+
+/**
+ * Package information extracted from errors
+ */
+export interface PackageInfo {
+  /** Package name */
+  name: string;
+  /** Requested version constraint */
+  requestedVersion?: string;
+  /** Currently installed version */
+  installedVersion?: string;
+  /** Packages this conflicts with */
+  conflictsWith?: string[];
+}
+
+/**
+ * An analyzed error with category and metadata
+ */
+export interface AnalyzedError {
+  /** Error category */
+  category: PostResurrectionErrorCategory;
+  /** Original error message */
+  message: string;
+  /** Package name if applicable */
+  packageName?: string;
+  /** Version constraint if applicable */
+  versionConstraint?: string;
+  /** Conflicting packages if applicable */
+  conflictingPackages?: string[];
+  /** Suggested fix strategy */
+  suggestedFix?: FixStrategy;
+  /** Priority score (higher = more likely root cause) */
+  priority: number;
+}
+
+/**
+ * Result of applying a fix strategy
+ */
+export interface FixResult {
+  /** Whether the fix was applied successfully */
+  success: boolean;
+  /** The strategy that was applied */
+  strategy: FixStrategy;
+  /** Error message if fix failed */
+  error?: string;
+}
+
+/**
+ * Record of a fix applied during validation
+ */
+export interface AppliedFix {
+  /** Iteration number when fix was applied */
+  iteration: number;
+  /** The error that triggered this fix */
+  error: AnalyzedError;
+  /** The strategy that was applied */
+  strategy: FixStrategy;
+  /** Result of applying the fix */
+  result: FixResult;
+}
+
+/**
+ * Historical record of a successful fix
+ */
+export interface HistoricalFix {
+  /** Pattern that identifies the error */
+  errorPattern: string;
+  /** Strategy that successfully fixed it */
+  strategy: FixStrategy;
+  /** Number of times this fix has succeeded */
+  successCount: number;
+  /** Last time this fix was used */
+  lastUsed: Date;
+}
+
+/**
+ * Fix history for a repository
+ */
+export interface FixHistory {
+  /** Repository identifier */
+  repoId: string;
+  /** List of historical fixes */
+  fixes: HistoricalFix[];
+  /** Last resurrection timestamp */
+  lastResurrection: Date;
+}
+
+/**
+ * Result of the post-resurrection validation process
+ */
+export interface PostResurrectionValidationResult {
+  /** Whether validation succeeded (compilation works) */
+  success: boolean;
+  /** Number of iterations performed */
+  iterations: number;
+  /** Compilation proof if successful */
+  compilationProof?: PostResurrectionCompilationProof;
+  /** List of fixes that were applied */
+  appliedFixes: AppliedFix[];
+  /** Errors that remain unresolved */
+  remainingErrors: AnalyzedError[];
+  /** Total duration in milliseconds */
+  duration: number;
+}
+
+/**
+ * Options for compilation
+ */
+export interface CompileOptions {
+  /** Package manager to use */
+  packageManager: PackageManager;
+  /** Build command to execute */
+  buildCommand: string;
+  /** Timeout in milliseconds */
+  timeout?: number;
+}
+
+/**
+ * Interface for the CompilationRunner component
+ */
+export interface ICompilationRunner {
+  /** Execute compilation and return result */
+  compile(repoPath: string, options: CompileOptions): Promise<PostResurrectionCompilationResult>;
+  /** Detect the build command from package.json */
+  detectBuildCommand(packageJson: Record<string, unknown>): string;
+  /** Detect the package manager from lockfiles */
+  detectPackageManager(repoPath: string): Promise<PackageManager>;
+}
+
+/**
+ * Interface for the ErrorAnalyzer component
+ */
+export interface IErrorAnalyzer {
+  /** Analyze compilation result and extract errors */
+  analyze(compilationResult: PostResurrectionCompilationResult): AnalyzedError[];
+  /** Categorize a single error message */
+  categorize(errorMessage: string): PostResurrectionErrorCategory;
+  /** Extract package info from an error */
+  extractPackageInfo(error: AnalyzedError): PackageInfo | null;
+  /** Prioritize errors by likelihood of being root cause */
+  prioritize(errors: AnalyzedError[]): AnalyzedError[];
+}
+
+/**
+ * Interface for the FixStrategyEngine component
+ */
+export interface IFixStrategyEngine {
+  /** Select the best fix strategy for an error */
+  selectStrategy(error: AnalyzedError, history: FixHistory): FixStrategy;
+  /** Apply a fix strategy to the repository */
+  applyFix(repoPath: string, strategy: FixStrategy): Promise<FixResult>;
+  /** Get alternative strategies for an error */
+  getAlternativeStrategies(error: AnalyzedError): FixStrategy[];
+}
+
+/**
+ * Interface for the FixHistoryStore component
+ */
+export interface IFixHistoryStore {
+  /** Record a successful fix */
+  recordFix(repoId: string, errorPattern: string, strategy: FixStrategy): void;
+  /** Get a previously successful fix for an error pattern */
+  getSuccessfulFix(errorPattern: string): FixStrategy | null;
+  /** Get the full fix history for a repository */
+  getHistory(repoId: string): FixHistory;
+  /** Save fix history to persistent storage */
+  saveHistory(repoId: string, history: FixHistory): Promise<void>;
+  /** Load fix history from persistent storage */
+  loadHistory(repoId: string): Promise<FixHistory | null>;
+}
+
+/**
+ * Interface for the PostResurrectionValidator component
+ */
+export interface IPostResurrectionValidator {
+  /** Run the validation loop */
+  validate(repoPath: string, options?: ValidationOptions): Promise<PostResurrectionValidationResult>;
+  /** Get fix history for a repository */
+  getFixHistory(repoPath: string): FixHistory;
+}
+
+// ============================================================================
+// Post-Resurrection Validation Event Types
+// ============================================================================
+
+/**
+ * Event types specific to post-resurrection validation
+ */
+export type PostResurrectionEventType =
+  | 'validation_iteration_start'
+  | 'validation_error_analysis'
+  | 'validation_fix_applied'
+  | 'validation_fix_outcome'
+  | 'validation_complete';
+
+/**
+ * Payload for validation iteration start event
+ */
+export interface ValidationIterationStartEventData {
+  /** Current iteration number (1-based) */
+  iteration: number;
+  /** Maximum iterations allowed */
+  maxIterations: number;
+  /** Repository path being validated */
+  repoPath: string;
+}
+
+/**
+ * Payload for validation error analysis event
+ */
+export interface ValidationErrorAnalysisEventData {
+  /** Current iteration number */
+  iteration: number;
+  /** Number of errors found */
+  errorCount: number;
+  /** Errors grouped by category */
+  errorsByCategory: Record<PostResurrectionErrorCategory, number>;
+  /** Top priority errors */
+  topErrors: AnalyzedError[];
+}
+
+/**
+ * Payload for validation fix applied event
+ */
+export interface ValidationFixAppliedEventData {
+  /** Current iteration number */
+  iteration: number;
+  /** The fix strategy being applied */
+  strategy: FixStrategy;
+  /** The error being addressed */
+  targetError: AnalyzedError;
+  /** Human-readable description of the fix */
+  description: string;
+}
+
+/**
+ * Payload for validation fix outcome event
+ */
+export interface ValidationFixOutcomeEventData {
+  /** Current iteration number */
+  iteration: number;
+  /** Whether the fix was successful */
+  success: boolean;
+  /** The strategy that was applied */
+  strategy: FixStrategy;
+  /** Error message if fix failed */
+  error?: string;
+  /** Whether compilation now succeeds */
+  compilationSucceeds: boolean;
+}
+
+/**
+ * Payload for post-resurrection validation complete event
+ */
+export interface PostResurrectionValidationCompleteEventData {
+  /** Whether validation succeeded */
+  success: boolean;
+  /** Total iterations performed */
+  totalIterations: number;
+  /** Total fixes applied */
+  totalFixesApplied: number;
+  /** Number of successful fixes */
+  successfulFixes: number;
+  /** Number of remaining errors */
+  remainingErrors: number;
+  /** Total duration in milliseconds */
+  duration: number;
+  /** Summary message */
+  summary: string;
+}
+
+/**
+ * Union type for all post-resurrection validation events
+ */
+export type PostResurrectionValidationEvent =
+  | { type: 'validation_iteration_start'; data: ValidationIterationStartEventData }
+  | { type: 'validation_error_analysis'; data: ValidationErrorAnalysisEventData }
+  | { type: 'validation_fix_applied'; data: ValidationFixAppliedEventData }
+  | { type: 'validation_fix_outcome'; data: ValidationFixOutcomeEventData }
+  | { type: 'validation_complete'; data: PostResurrectionValidationCompleteEventData };
+
+// ============================================================================
+// Post-Resurrection Validation Constants
+// ============================================================================
+
+/**
+ * Regular expressions for identifying error categories
+ */
+export const POST_RESURRECTION_ERROR_PATTERNS: Record<PostResurrectionErrorCategory, RegExp> = {
+  dependency_not_found: /Cannot find module ['"]([^'"]+)['"]/,
+  dependency_version_conflict: /ERESOLVE.*Could not resolve dependency/s,
+  peer_dependency_conflict: /npm ERR! peer dep missing|peerDependencies|ERESOLVE.*peer/s,
+  native_module_failure: /node-gyp|gyp ERR!|binding\.gyp|prebuild-install/,
+  lockfile_conflict: /npm ERR! code ENOLOCK|lockfile version|npm ERR! Invalid: lock/,
+  git_dependency_failure: /git dep preparation failed|Permission denied \(publickey\)|Could not resolve git/,
+  syntax_error: /SyntaxError:|Unexpected token|Parse error/,
+  type_error: /TypeError:|TS\d+:/,
+  unknown: /.*/
+};
+
+/**
+ * Default fix strategies for each error category
+ */
+export const DEFAULT_FIX_STRATEGIES: Partial<Record<PostResurrectionErrorCategory, FixStrategy[]>> = {
+  dependency_version_conflict: [
+    { type: 'legacy_peer_deps' },
+    { type: 'remove_lockfile', lockfile: 'package-lock.json' },
+    { type: 'force_install' }
+  ],
+  peer_dependency_conflict: [
+    { type: 'legacy_peer_deps' },
+    { type: 'add_resolution', package: '', version: '' }
+  ],
+  native_module_failure: [
+    { type: 'remove_package', package: '' },
+    { type: 'substitute_package', original: '', replacement: '' }
+  ],
+  lockfile_conflict: [
+    { type: 'remove_lockfile', lockfile: 'package-lock.json' }
+  ],
+  git_dependency_failure: [
+    { type: 'substitute_package', original: '', replacement: '' },
+    { type: 'remove_package', package: '' }
+  ]
+};
+
+/**
+ * Known substitutions for problematic native modules
+ */
+export const NATIVE_MODULE_ALTERNATIVES: Record<string, string> = {
+  'bcrypt': 'bcryptjs',
+  'node-sass': 'sass',
+  'fibers': '',  // Remove, no alternative
+  'deasync': '',  // Remove, no alternative
+  'sharp': '',    // Skip, optional
+  'canvas': '',   // Skip, optional
+  'sqlite3': 'better-sqlite3',
+  'node-canvas': '',  // Skip, optional
+  'fsevents': ''  // macOS only, skip on other platforms
+};
+
+/**
+ * Priority scores for error categories (higher = more likely root cause)
+ */
+export const ERROR_CATEGORY_PRIORITIES: Record<PostResurrectionErrorCategory, number> = {
+  lockfile_conflict: 100,
+  dependency_version_conflict: 90,
+  peer_dependency_conflict: 80,
+  native_module_failure: 70,
+  git_dependency_failure: 60,
+  dependency_not_found: 50,
+  syntax_error: 40,
+  type_error: 30,
+  unknown: 10
+};

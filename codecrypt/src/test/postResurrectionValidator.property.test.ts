@@ -1,0 +1,761 @@
+/**
+ * Property-Based Tests for PostResurrectionValidator
+ * 
+ * **Feature: post-resurrection-validation**
+ */
+
+import * as assert from 'assert';
+import * as fc from 'fast-check';
+import { PostResurrectionValidator, createPostResurrectionValidator } from '../services/postResurrectionValidator';
+import {
+  ICompilationRunner,
+  IErrorAnalyzer,
+  IFixStrategyEngine,
+  IFixHistoryStore,
+  PostResurrectionCompilationResult,
+  PostResurrectionCompilationProof,
+  CompileOptions,
+  PackageManager,
+  AnalyzedError,
+  FixStrategy,
+  FixResult,
+  FixHistory,
+  PostResurrectionErrorCategory,
+  ValidationIterationStartEventData,
+  ValidationErrorAnalysisEventData,
+  ValidationFixAppliedEventData,
+  ValidationFixOutcomeEventData,
+  PostResurrectionValidationCompleteEventData
+} from '../types';
+
+// ============================================================================
+// Mock Implementations for Testing
+// ============================================================================
+
+/**
+ * Mock CompilationRunner that returns configurable results
+ */
+class MockCompilationRunner implements ICompilationRunner {
+  private results: PostResurrectionCompilationResult[];
+  private callIndex = 0;
+
+  constructor(results: PostResurrectionCompilationResult[]) {
+    this.results = results;
+  }
+
+  async compile(_repoPath: string, _options: CompileOptions): Promise<PostResurrectionCompilationResult> {
+    const result = this.results[Math.min(this.callIndex, this.results.length - 1)];
+    this.callIndex++;
+    return result;
+  }
+
+  detectBuildCommand(_packageJson: Record<string, unknown>): string {
+    return 'build';
+  }
+
+  async detectPackageManager(_repoPath: string): Promise<PackageManager> {
+    return 'npm';
+  }
+
+  generateCompilationProof(
+    result: PostResurrectionCompilationResult,
+    options: CompileOptions,
+    iterations: number
+  ): PostResurrectionCompilationProof {
+    return {
+      timestamp: new Date(),
+      buildCommand: options.buildCommand,
+      exitCode: result.exitCode,
+      duration: result.duration,
+      outputHash: 'a'.repeat(64),
+      packageManager: options.packageManager,
+      iterationsRequired: iterations
+    };
+  }
+
+  getCallCount(): number {
+    return this.callIndex;
+  }
+}
+
+
+/**
+ * Mock ErrorAnalyzer that returns configurable errors
+ */
+class MockErrorAnalyzer implements IErrorAnalyzer {
+  private errors: AnalyzedError[];
+
+  constructor(errors: AnalyzedError[]) {
+    this.errors = errors;
+  }
+
+  analyze(_compilationResult: PostResurrectionCompilationResult): AnalyzedError[] {
+    return this.errors;
+  }
+
+  categorize(_errorMessage: string): PostResurrectionErrorCategory {
+    return 'unknown';
+  }
+
+  extractPackageInfo(_error: AnalyzedError): null {
+    return null;
+  }
+
+  prioritize(errors: AnalyzedError[]): AnalyzedError[] {
+    return [...errors].sort((a, b) => b.priority - a.priority);
+  }
+}
+
+/**
+ * Mock FixStrategyEngine that tracks strategy attempts
+ */
+class MockFixStrategyEngine implements IFixStrategyEngine {
+  private attemptedStrategies: Set<string> = new Set();
+  private fixSuccess: boolean;
+
+  constructor(fixSuccess: boolean = true) {
+    this.fixSuccess = fixSuccess;
+  }
+
+  selectStrategy(error: AnalyzedError, _history: FixHistory): FixStrategy {
+    return { type: 'legacy_peer_deps' };
+  }
+
+  async applyFix(_repoPath: string, strategy: FixStrategy): Promise<FixResult> {
+    return {
+      success: this.fixSuccess,
+      strategy
+    };
+  }
+
+  getAlternativeStrategies(_error: AnalyzedError): FixStrategy[] {
+    return [{ type: 'force_install' }];
+  }
+
+  markStrategyAttempted(error: AnalyzedError, strategy: FixStrategy): void {
+    this.attemptedStrategies.add(`${error.category}:${strategy.type}`);
+  }
+
+  resetAttemptedStrategies(): void {
+    this.attemptedStrategies.clear();
+  }
+
+  hasUntriedStrategies(_error: AnalyzedError): boolean {
+    return this.attemptedStrategies.size < 2;
+  }
+}
+
+/**
+ * Mock FixHistoryStore
+ */
+class MockFixHistoryStore implements IFixHistoryStore {
+  private history: FixHistory = {
+    repoId: 'test',
+    fixes: [],
+    lastResurrection: new Date()
+  };
+
+  recordFix(_repoId: string, _errorPattern: string, _strategy: FixStrategy): void {
+    // No-op for testing
+  }
+
+  getSuccessfulFix(_errorPattern: string): FixStrategy | null {
+    return null;
+  }
+
+  getHistory(_repoId: string): FixHistory {
+    return this.history;
+  }
+
+  async saveHistory(_repoId: string, _history: FixHistory): Promise<void> {
+    // No-op for testing
+  }
+
+  async loadHistory(_repoId: string): Promise<FixHistory | null> {
+    return this.history;
+  }
+}
+
+// ============================================================================
+// Arbitrary Generators
+// ============================================================================
+
+/**
+ * Generate a random error category
+ */
+const errorCategoryArb: fc.Arbitrary<PostResurrectionErrorCategory> = fc.constantFrom(
+  'dependency_not_found',
+  'dependency_version_conflict',
+  'peer_dependency_conflict',
+  'native_module_failure',
+  'lockfile_conflict',
+  'git_dependency_failure',
+  'syntax_error',
+  'type_error',
+  'unknown'
+);
+
+/**
+ * Generate a random analyzed error
+ */
+const analyzedErrorArb: fc.Arbitrary<AnalyzedError> = fc.record({
+  category: errorCategoryArb,
+  message: fc.string({ minLength: 1, maxLength: 200 }),
+  packageName: fc.option(fc.string({ minLength: 1, maxLength: 50 }).filter(s => /^[a-z@][a-z0-9_/-]*$/i.test(s)), { nil: undefined }),
+  priority: fc.integer({ min: 1, max: 100 })
+});
+
+/**
+ * Generate a compilation result
+ */
+const compilationResultArb = (success: boolean): fc.Arbitrary<PostResurrectionCompilationResult> => 
+  fc.record({
+    success: fc.constant(success),
+    exitCode: fc.constant(success ? 0 : 1),
+    stdout: fc.string({ minLength: 0, maxLength: 500 }),
+    stderr: fc.string({ minLength: 0, maxLength: 500 }),
+    duration: fc.integer({ min: 100, max: 10000 })
+  });
+
+
+// ============================================================================
+// Property Tests
+// ============================================================================
+
+suite('PostResurrectionValidator Property Tests', () => {
+  /**
+   * **Feature: post-resurrection-validation, Property 1: Resurrection Loop Invariant**
+   * **Validates: Requirements 1.1, 4.1, 4.2, 4.3, 4.5**
+   * 
+   * Property: For any resurrection attempt:
+   * - If compilation fails and iterations remain below max, the system should apply a fix and retry
+   * - If compilation succeeds, the loop should terminate with success
+   * - If max iterations is reached, the loop should terminate with failure report
+   */
+  suite('Property 1: Resurrection Loop Invariant', () => {
+    test('should terminate with success when compilation succeeds on first try', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          compilationResultArb(true),
+          fc.integer({ min: 1, max: 20 }),
+          async (successResult, maxIterations) => {
+            const mockRunner = new MockCompilationRunner([successResult]);
+            const mockAnalyzer = new MockErrorAnalyzer([]);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const result = await validator.validate('/test/repo', { maxIterations });
+
+            // Should succeed
+            assert.strictEqual(result.success, true, 'should succeed when compilation passes');
+            // Should complete in 1 iteration
+            assert.strictEqual(result.iterations, 1, 'should complete in 1 iteration');
+            // Should have compilation proof
+            assert.ok(result.compilationProof, 'should have compilation proof');
+            // Should have no remaining errors
+            assert.strictEqual(result.remainingErrors.length, 0, 'should have no remaining errors');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should terminate with success after fixes when compilation eventually succeeds', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 5 }), // Number of failures before success
+          fc.integer({ min: 6, max: 20 }), // Max iterations (must be > failures)
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 3 }),
+          async (failuresBeforeSuccess, maxIterations, errors) => {
+            // Create sequence: N failures followed by success
+            const results: PostResurrectionCompilationResult[] = [];
+            for (let i = 0; i < failuresBeforeSuccess; i++) {
+              results.push({
+                success: false,
+                exitCode: 1,
+                stdout: '',
+                stderr: 'Error',
+                duration: 1000
+              });
+            }
+            results.push({
+              success: true,
+              exitCode: 0,
+              stdout: 'Success',
+              stderr: '',
+              duration: 1000
+            });
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const result = await validator.validate('/test/repo', { maxIterations });
+
+            // Should succeed
+            assert.strictEqual(result.success, true, 'should succeed after fixes');
+            // Should have applied fixes
+            assert.ok(result.appliedFixes.length > 0, 'should have applied fixes');
+            // Iterations should equal failures + 1 (the success)
+            assert.strictEqual(result.iterations, failuresBeforeSuccess + 1, 
+              'iterations should match failures + success');
+            // Should have compilation proof
+            assert.ok(result.compilationProof, 'should have compilation proof');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should terminate with failure when max iterations reached', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 10 }), // Max iterations
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 3 }),
+          async (maxIterations, errors) => {
+            // Always fail
+            const failResult: PostResurrectionCompilationResult = {
+              success: false,
+              exitCode: 1,
+              stdout: '',
+              stderr: 'Error',
+              duration: 1000
+            };
+
+            const mockRunner = new MockCompilationRunner([failResult]);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const result = await validator.validate('/test/repo', { maxIterations });
+
+            // Should fail
+            assert.strictEqual(result.success, false, 'should fail when max iterations reached');
+            // Should have reached max iterations
+            assert.strictEqual(result.iterations, maxIterations, 
+              'should have reached max iterations');
+            // Should have no compilation proof
+            assert.strictEqual(result.compilationProof, undefined, 
+              'should not have compilation proof');
+            // Should have remaining errors
+            assert.ok(result.remainingErrors.length > 0, 'should have remaining errors');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should apply fix and retry when compilation fails', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 3 }),
+          async (errors) => {
+            // Fail once, then succeed
+            const results: PostResurrectionCompilationResult[] = [
+              { success: false, exitCode: 1, stdout: '', stderr: 'Error', duration: 1000 },
+              { success: true, exitCode: 0, stdout: 'Success', stderr: '', duration: 1000 }
+            ];
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const result = await validator.validate('/test/repo', { maxIterations: 10 });
+
+            // Should succeed
+            assert.strictEqual(result.success, true, 'should succeed after fix');
+            // Should have applied exactly one fix
+            assert.strictEqual(result.appliedFixes.length, 1, 'should have applied one fix');
+            // Fix should have been applied
+            assert.ok(result.appliedFixes[0].result.success, 'fix should have succeeded');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should track iteration count correctly', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 8 }), // Iterations to run
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 2 }),
+          async (targetIterations, errors) => {
+            // Create results that fail until target iteration
+            const results: PostResurrectionCompilationResult[] = [];
+            for (let i = 0; i < targetIterations - 1; i++) {
+              results.push({
+                success: false,
+                exitCode: 1,
+                stdout: '',
+                stderr: 'Error',
+                duration: 1000
+              });
+            }
+            results.push({
+              success: true,
+              exitCode: 0,
+              stdout: 'Success',
+              stderr: '',
+              duration: 1000
+            });
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const result = await validator.validate('/test/repo', { maxIterations: 20 });
+
+            // Iteration count should match
+            assert.strictEqual(result.iterations, targetIterations, 
+              `should have ${targetIterations} iterations`);
+            // Applied fixes should be iterations - 1 (no fix on success)
+            assert.strictEqual(result.appliedFixes.length, targetIterations - 1,
+              'applied fixes should be iterations - 1');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+  });
+
+
+  /**
+   * **Feature: post-resurrection-validation, Property 4: Event Emission Completeness**
+   * **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
+   * 
+   * Property: For any resurrection loop execution, events should be emitted for:
+   * - iteration start
+   * - error analysis
+   * - fix application
+   * - fix outcome
+   * - loop completion summary
+   */
+  suite('Property 4: Event Emission Completeness', () => {
+    test('should emit all required events during validation loop', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 5 }), // Number of iterations
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 2 }),
+          async (iterations, errors) => {
+            // Create results that fail until last iteration
+            const results: PostResurrectionCompilationResult[] = [];
+            for (let i = 0; i < iterations - 1; i++) {
+              results.push({
+                success: false,
+                exitCode: 1,
+                stdout: '',
+                stderr: 'Error',
+                duration: 1000
+              });
+            }
+            results.push({
+              success: true,
+              exitCode: 0,
+              stdout: 'Success',
+              stderr: '',
+              duration: 1000
+            });
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            // Track emitted events
+            const iterationStartEvents: ValidationIterationStartEventData[] = [];
+            const errorAnalysisEvents: ValidationErrorAnalysisEventData[] = [];
+            const fixAppliedEvents: ValidationFixAppliedEventData[] = [];
+            const fixOutcomeEvents: ValidationFixOutcomeEventData[] = [];
+            const completeEvents: PostResurrectionValidationCompleteEventData[] = [];
+
+            validator.on('validation_iteration_start', (e) => iterationStartEvents.push(e.data));
+            validator.on('validation_error_analysis', (e) => errorAnalysisEvents.push(e.data));
+            validator.on('validation_fix_applied', (e) => fixAppliedEvents.push(e.data));
+            validator.on('validation_fix_outcome', (e) => fixOutcomeEvents.push(e.data));
+            validator.on('validation_complete', (e) => completeEvents.push(e.data));
+
+            await validator.validate('/test/repo', { maxIterations: 20 });
+
+            // Verify iteration start events (Requirement 5.1)
+            assert.strictEqual(iterationStartEvents.length, iterations,
+              'should emit iteration start for each iteration');
+            for (let i = 0; i < iterations; i++) {
+              assert.strictEqual(iterationStartEvents[i].iteration, i + 1,
+                `iteration ${i + 1} should have correct number`);
+            }
+
+            // Verify error analysis events (Requirement 5.2)
+            // Error analysis happens for each failed iteration
+            assert.strictEqual(errorAnalysisEvents.length, iterations - 1,
+              'should emit error analysis for each failed iteration');
+
+            // Verify fix applied events (Requirement 5.3)
+            assert.strictEqual(fixAppliedEvents.length, iterations - 1,
+              'should emit fix applied for each fix attempt');
+
+            // Verify fix outcome events (Requirement 5.4)
+            assert.strictEqual(fixOutcomeEvents.length, iterations - 1,
+              'should emit fix outcome for each fix attempt');
+
+            // Verify completion event (Requirement 5.5)
+            assert.strictEqual(completeEvents.length, 1,
+              'should emit exactly one completion event');
+            assert.ok(completeEvents[0].summary.length > 0,
+              'completion event should have summary');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should emit completion event with correct summary on success', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 5 }),
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 2 }),
+          async (failuresBeforeSuccess, errors) => {
+            const results: PostResurrectionCompilationResult[] = [];
+            for (let i = 0; i < failuresBeforeSuccess; i++) {
+              results.push({
+                success: false,
+                exitCode: 1,
+                stdout: '',
+                stderr: 'Error',
+                duration: 1000
+              });
+            }
+            results.push({
+              success: true,
+              exitCode: 0,
+              stdout: 'Success',
+              stderr: '',
+              duration: 1000
+            });
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            let completeEvent: PostResurrectionValidationCompleteEventData | undefined;
+            validator.on('validation_complete', (e) => { completeEvent = e.data; });
+
+            await validator.validate('/test/repo', { maxIterations: 20 });
+
+            assert.ok(completeEvent !== undefined, 'should emit completion event');
+            const event = completeEvent as PostResurrectionValidationCompleteEventData;
+            assert.strictEqual(event.success, true, 'should report success');
+            assert.strictEqual(event.totalIterations, failuresBeforeSuccess + 1,
+              'should report correct iteration count');
+            assert.strictEqual(event.totalFixesApplied, failuresBeforeSuccess,
+              'should report correct fixes applied');
+            assert.strictEqual(event.remainingErrors, 0,
+              'should report no remaining errors');
+            assert.ok(event.summary.includes('succeeded'),
+              'summary should indicate success');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should emit completion event with correct summary on failure', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 1, max: 5 }),
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 3 }),
+          async (maxIterations, errors) => {
+            // Always fail
+            const failResult: PostResurrectionCompilationResult = {
+              success: false,
+              exitCode: 1,
+              stdout: '',
+              stderr: 'Error',
+              duration: 1000
+            };
+
+            const mockRunner = new MockCompilationRunner([failResult]);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            let completeEvent: PostResurrectionValidationCompleteEventData | undefined;
+            validator.on('validation_complete', (e) => { completeEvent = e.data; });
+
+            await validator.validate('/test/repo', { maxIterations });
+
+            assert.ok(completeEvent !== undefined, 'should emit completion event');
+            const event = completeEvent as PostResurrectionValidationCompleteEventData;
+            assert.strictEqual(event.success, false, 'should report failure');
+            assert.strictEqual(event.totalIterations, maxIterations,
+              'should report max iterations reached');
+            assert.ok(event.remainingErrors > 0,
+              'should report remaining errors');
+            assert.ok(event.summary.includes('failed'),
+              'summary should indicate failure');
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    test('should include iteration number in all events', async function() {
+      this.timeout(30000);
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.integer({ min: 2, max: 4 }),
+          fc.array(analyzedErrorArb, { minLength: 1, maxLength: 2 }),
+          async (iterations, errors) => {
+            const results: PostResurrectionCompilationResult[] = [];
+            for (let i = 0; i < iterations - 1; i++) {
+              results.push({
+                success: false,
+                exitCode: 1,
+                stdout: '',
+                stderr: 'Error',
+                duration: 1000
+              });
+            }
+            results.push({
+              success: true,
+              exitCode: 0,
+              stdout: 'Success',
+              stderr: '',
+              duration: 1000
+            });
+
+            const mockRunner = new MockCompilationRunner(results);
+            const mockAnalyzer = new MockErrorAnalyzer(errors);
+            const mockEngine = new MockFixStrategyEngine(true);
+            const mockStore = new MockFixHistoryStore();
+
+            const validator = createPostResurrectionValidator(
+              mockRunner,
+              mockAnalyzer,
+              mockEngine as any,
+              mockStore
+            );
+
+            const allIterationNumbers: number[] = [];
+            
+            validator.on('validation_iteration_start', (e) => {
+              allIterationNumbers.push(e.data.iteration);
+            });
+            validator.on('validation_error_analysis', (e) => {
+              allIterationNumbers.push(e.data.iteration);
+            });
+            validator.on('validation_fix_applied', (e) => {
+              allIterationNumbers.push(e.data.iteration);
+            });
+            validator.on('validation_fix_outcome', (e) => {
+              allIterationNumbers.push(e.data.iteration);
+            });
+
+            await validator.validate('/test/repo', { maxIterations: 20 });
+
+            // All iteration numbers should be valid (1-based, within range)
+            for (const num of allIterationNumbers) {
+              assert.ok(num >= 1 && num <= iterations,
+                `iteration number ${num} should be in range [1, ${iterations}]`);
+            }
+
+            return true;
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+  });
+});

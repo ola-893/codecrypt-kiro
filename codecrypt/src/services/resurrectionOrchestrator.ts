@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult, BaselineCompilationResult, ResurrectionVerdict } from '../types';
+import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult, BaselineCompilationResult, ResurrectionVerdict, PostResurrectionValidationResult, ValidationOptions } from '../types';
 import { getLogger } from '../utils/logger';
 import { getEventEmitter } from './eventEmitter';
 import { createSSEServer, SSEServer } from './sseServer';
@@ -22,6 +22,7 @@ import { rollbackLastCommit } from './rollback';
 import { generateResurrectionReport, ResurrectionReport } from './reporting';
 import { getLLMCache, getASTCache } from './cache';
 import { runBaselineCompilationCheck, runFinalCompilationCheck, generateResurrectionVerdict } from './compilationProof';
+import { createPostResurrectionValidator, PostResurrectionValidator } from './postResurrectionValidator';
 
 const logger = getLogger();
 
@@ -39,6 +40,10 @@ export interface OrchestratorConfig {
   enableTimeMachine?: boolean;
   /** Enable LLM analysis */
   enableLLM?: boolean;
+  /** Enable post-resurrection validation */
+  enablePostResurrectionValidation?: boolean;
+  /** Post-resurrection validation options */
+  postResurrectionValidationOptions?: ValidationOptions;
 }
 
 /**
@@ -49,6 +54,7 @@ interface OrchestratorState {
   context: ResurrectionContext;
   hybridAnalysis?: HybridAnalysis;
   timeMachineResults?: TimeMachineValidationResult;
+  postResurrectionValidationResult?: PostResurrectionValidationResult;
 }
 
 /**
@@ -68,6 +74,8 @@ export class ResurrectionOrchestrator {
       enableHybridAnalysis: config.enableHybridAnalysis ?? true,
       enableTimeMachine: config.enableTimeMachine ?? true,
       enableLLM: config.enableLLM ?? true,
+      enablePostResurrectionValidation: config.enablePostResurrectionValidation ?? true,
+      postResurrectionValidationOptions: config.postResurrectionValidationOptions ?? {},
     };
 
     this.state = {
@@ -611,6 +619,187 @@ export class ResurrectionOrchestrator {
       });
       throw error;
     }
+  }
+
+  /**
+   * Run post-resurrection validation
+   * 
+   * This method runs after dependency updates to ensure the resurrected codebase
+   * compiles successfully. It implements an iterative fix-retry loop that:
+   * 1. Attempts compilation
+   * 2. Analyzes any errors
+   * 3. Applies targeted fixes
+   * 4. Retries until success or max iterations reached
+   * 
+   * @param options - Optional validation options to override defaults
+   * @returns Validation result or undefined if disabled/no repo path
+   * 
+   * Requirements: 1.1, 4.5
+   */
+  async runPostResurrectionValidation(
+    options?: ValidationOptions
+  ): Promise<PostResurrectionValidationResult | undefined> {
+    if (!this.config.enablePostResurrectionValidation || !this.state.context.repoPath) {
+      logger.info('Post-resurrection validation disabled or no repository path');
+      return undefined;
+    }
+
+    logger.info('Running post-resurrection validation');
+    this.eventEmitter.emitNarration({
+      message: 'Starting post-resurrection validation. Checking if the resurrected code compiles...',
+    });
+
+    try {
+      // Create the validator
+      const validator = createPostResurrectionValidator();
+
+      // Merge options with config defaults
+      const validationOptions: ValidationOptions = {
+        ...this.config.postResurrectionValidationOptions,
+        ...options,
+      };
+
+      // Forward validation events to the main event emitter
+      this.setupValidationEventForwarding(validator);
+
+      // Run validation
+      const result = await validator.validate(
+        this.state.context.repoPath,
+        validationOptions
+      );
+
+      // Store result in state
+      this.state.postResurrectionValidationResult = result;
+
+      // Log the result
+      this.state.context.transformationLog.push({
+        timestamp: new Date(),
+        type: result.success ? 'dependency_update' : 'error',
+        message: result.success
+          ? `Post-resurrection validation succeeded after ${result.iterations} iteration(s)`
+          : `Post-resurrection validation failed after ${result.iterations} iteration(s)`,
+        details: {
+          success: result.success,
+          iterations: result.iterations,
+          appliedFixes: result.appliedFixes.length,
+          remainingErrors: result.remainingErrors.length,
+          duration: result.duration,
+        },
+      });
+
+      // Emit narration based on result
+      if (result.success) {
+        this.eventEmitter.emitNarration({
+          message: `🎉 Post-resurrection validation passed! Code compiles successfully after ${result.iterations} iteration(s) with ${result.appliedFixes.length} fix(es) applied.`,
+          category: 'success',
+        });
+      } else {
+        const errorSummary = result.remainingErrors
+          .slice(0, 3)
+          .map(e => e.category)
+          .join(', ');
+        this.eventEmitter.emitNarration({
+          message: `Post-resurrection validation incomplete after ${result.iterations} iteration(s). ${result.remainingErrors.length} error(s) remain (${errorSummary}).`,
+          category: 'warning',
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      logger.error('Post-resurrection validation failed', error);
+      const errorMessage = error.message || String(error);
+      this.eventEmitter.emitNarration({
+        message: `Post-resurrection validation encountered errors: ${errorMessage}`,
+        category: 'error',
+      });
+
+      // Log the error
+      this.state.context.transformationLog.push({
+        timestamp: new Date(),
+        type: 'error',
+        message: `Post-resurrection validation error: ${errorMessage}`,
+        details: { error: errorMessage },
+      });
+
+      return undefined;
+    }
+  }
+
+  /**
+   * Set up event forwarding from PostResurrectionValidator to the main event emitter
+   * This allows validation events to be streamed to the frontend via SSE
+   */
+  private setupValidationEventForwarding(validator: PostResurrectionValidator): void {
+    // Forward iteration start events
+    validator.on('validation_iteration_start', (event) => {
+      this.eventEmitter.emit('validation_iteration_start', {
+        type: 'validation_iteration_start',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+      this.eventEmitter.emitNarration({
+        message: `Validation iteration ${event.data.iteration}/${event.data.maxIterations}...`,
+        category: 'info',
+      });
+    });
+
+    // Forward error analysis events
+    validator.on('validation_error_analysis', (event) => {
+      this.eventEmitter.emit('validation_error_analysis', {
+        type: 'validation_error_analysis',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+      if (event.data.errorCount > 0) {
+        const topCategories = Object.entries(event.data.errorsByCategory)
+          .filter(([_, count]) => (count as number) > 0)
+          .map(([cat, count]) => `${count} ${cat}`)
+          .slice(0, 3)
+          .join(', ');
+        this.eventEmitter.emitNarration({
+          message: `Found ${event.data.errorCount} error(s): ${topCategories}`,
+          category: 'info',
+        });
+      }
+    });
+
+    // Forward fix applied events
+    validator.on('validation_fix_applied', (event) => {
+      this.eventEmitter.emit('validation_fix_applied', {
+        type: 'validation_fix_applied',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+      this.eventEmitter.emitNarration({
+        message: `Applying fix: ${event.data.description}`,
+        category: 'info',
+      });
+    });
+
+    // Forward fix outcome events
+    validator.on('validation_fix_outcome', (event) => {
+      this.eventEmitter.emit('validation_fix_outcome', {
+        type: 'validation_fix_outcome',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+    });
+
+    // Forward validation complete events
+    validator.on('validation_complete', (event) => {
+      this.eventEmitter.emit('validation_complete', {
+        type: 'validation_complete',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+    });
+  }
+
+  /**
+   * Get post-resurrection validation results
+   */
+  getPostResurrectionValidationResult(): PostResurrectionValidationResult | undefined {
+    return this.state.postResurrectionValidationResult;
   }
 
   /**

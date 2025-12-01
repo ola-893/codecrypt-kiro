@@ -18,6 +18,11 @@ import {
   BaselineCompilationCompleteEventData,
   FinalCompilationCompleteEventData,
   ResurrectionVerdictEventData,
+  // Post-resurrection validation event types
+  ValidationIterationStartEventData,
+  ValidationErrorAnalysisEventData,
+  ValidationFixAppliedEventData,
+  ValidationFixOutcomeEventData,
 } from '../types';
 import { getLogger } from '../utils/logger';
 
@@ -107,6 +112,38 @@ export class ResurrectionEventEmitter extends EventEmitter {
    */
   emitResurrectionVerdict(data: ResurrectionVerdictEventData): void {
     this.emitEvent('resurrection_verdict', data);
+  }
+
+  // ============================================================================
+  // Post-Resurrection Validation Events
+  // ============================================================================
+
+  /**
+   * Emit a validation iteration start event
+   */
+  emitValidationIterationStart(data: ValidationIterationStartEventData): void {
+    this.emitEvent('validation_iteration_start', data);
+  }
+
+  /**
+   * Emit a validation error analysis event
+   */
+  emitValidationErrorAnalysis(data: ValidationErrorAnalysisEventData): void {
+    this.emitEvent('validation_error_analysis', data);
+  }
+
+  /**
+   * Emit a validation fix applied event
+   */
+  emitValidationFixApplied(data: ValidationFixAppliedEventData): void {
+    this.emitEvent('validation_fix_applied', data);
+  }
+
+  /**
+   * Emit a validation fix outcome event
+   */
+  emitValidationFixOutcome(data: ValidationFixOutcomeEventData): void {
+    this.emitEvent('validation_fix_outcome', data);
   }
 
   /**
@@ -220,6 +257,46 @@ export class ResurrectionEventEmitter extends EventEmitter {
     listener: (event: ResurrectionEvent<ResurrectionVerdictEventData>) => void
   ): void {
     this.on('resurrection_verdict', listener);
+  }
+
+  // ============================================================================
+  // Post-Resurrection Validation Event Subscriptions
+  // ============================================================================
+
+  /**
+   * Subscribe to validation iteration start events
+   */
+  onValidationIterationStart(
+    listener: (event: ResurrectionEvent<ValidationIterationStartEventData>) => void
+  ): void {
+    this.on('validation_iteration_start', listener);
+  }
+
+  /**
+   * Subscribe to validation error analysis events
+   */
+  onValidationErrorAnalysis(
+    listener: (event: ResurrectionEvent<ValidationErrorAnalysisEventData>) => void
+  ): void {
+    this.on('validation_error_analysis', listener);
+  }
+
+  /**
+   * Subscribe to validation fix applied events
+   */
+  onValidationFixApplied(
+    listener: (event: ResurrectionEvent<ValidationFixAppliedEventData>) => void
+  ): void {
+    this.on('validation_fix_applied', listener);
+  }
+
+  /**
+   * Subscribe to validation fix outcome events
+   */
+  onValidationFixOutcome(
+    listener: (event: ResurrectionEvent<ValidationFixOutcomeEventData>) => void
+  ): void {
+    this.on('validation_fix_outcome', listener);
   }
 
   /**

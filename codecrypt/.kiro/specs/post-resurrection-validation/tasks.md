@@ -1,0 +1,116 @@
+# Implementation Plan
+
+- [x] 1. Set up core interfaces and types
+  - Create TypeScript interfaces for PostResurrectionValidator, CompilationRunner, ErrorAnalyzer, FixStrategyEngine, and FixHistoryStore
+  - Define error categories, fix strategies, and result types
+  - Set up event types for progress reporting
+  - _Requirements: 1.1, 2.1, 3.1, 5.1_
+
+- [x] 2. Implement CompilationRunner
+  - [x] 2.1 Create CompilationRunner class with compile method
+    - Execute build commands using child_process
+    - Capture stdout, stderr, and exit codes
+    - Implement timeout handling
+    - _Requirements: 1.1, 1.2, 1.4_
+  - [x] 2.2 Implement build command and package manager detection
+    - Detect package manager from lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml)
+    - Parse package.json scripts to find build command
+    - Support npm, yarn, and pnpm
+    - _Requirements: 1.4, 1.5_
+  - [x] 2.3 Implement CompilationProof generation
+    - Generate proof artifact on successful compilation
+    - Include timestamp, command, exit code, duration, output hash
+    - _Requirements: 1.3_
+  - [x] 2.4 Write property test for CompilationProof generation
+    - **Property 6: Compilation Proof Generation**
+    - **Validates: Requirements 1.3**
+
+- [x] 3. Implement ErrorAnalyzer
+  - [x] 3.1 Create ErrorAnalyzer class with error pattern matching
+    - Define regex patterns for each error category
+    - Implement categorize method to match errors to categories
+    - _Requirements: 2.1_
+  - [x] 3.2 Implement package info extraction
+    - Extract package name from dependency errors
+    - Extract version constraints from conflict errors
+    - Extract conflicting packages from peer dependency errors
+    - _Requirements: 2.2, 2.3, 2.4_
+  - [x] 3.3 Implement error prioritization
+    - Assign priority scores based on error category
+    - Sort errors by likelihood of being root cause
+    - _Requirements: 2.5_
+  - [x] 3.4 Write property test for error parsing
+    - **Property 2: Error Parsing Completeness**
+    - **Validates: Requirements 2.1, 2.2, 2.3, 2.4**
+
+- [x] 4. Implement FixStrategyEngine
+  - [x] 4.1 Create FixStrategyEngine class with strategy selection
+    - Map error categories to default fix strategies
+    - Support multiple strategies per error type
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+  - [x] 4.2 Implement fix application methods
+    - Implement version adjustment in package.json
+    - Implement --legacy-peer-deps installation
+    - Implement lockfile removal
+    - Implement package substitution
+    - Implement package removal
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+  - [x] 4.3 Implement alternative strategy rotation
+    - Track attempted strategies per error
+    - Select next untried strategy when fix fails
+    - _Requirements: 4.4_
+  - [x] 4.4 Write property test for fix strategy application
+    - **Property 3: Fix Strategy Application**
+    - **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 4.4**
+
+- [x] 5. Implement FixHistoryStore
+  - [x] 5.1 Create FixHistoryStore class with persistence
+    - Store fix history in JSON file per repository
+    - Record error patterns and successful strategies
+    - _Requirements: 6.1, 6.3_
+  - [x] 5.2 Implement fix retrieval and prioritization
+    - Look up previously successful fixes by error pattern
+    - Prioritize known fixes over default strategies
+    - _Requirements: 6.2, 6.5_
+  - [x] 5.3 Write property test for fix history persistence
+    - **Property 5: Fix History Persistence**
+    - **Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5**
+
+- [x] 6. Implement PostResurrectionValidator
+  - [x] 6.1 Create PostResurrectionValidator class with validation loop
+    - Orchestrate compile → analyze → fix → retry cycle
+    - Track iteration count and applied fixes
+    - Enforce max iterations limit
+    - _Requirements: 4.1, 4.2, 4.3, 4.5_
+  - [x] 6.2 Implement progress event emission
+    - Emit events for iteration start, error analysis, fix application, outcomes
+    - Emit summary event on loop completion
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+  - [x] 6.3 Write property test for resurrection loop invariant
+    - **Property 1: Resurrection Loop Invariant**
+    - **Validates: Requirements 1.1, 4.1, 4.2, 4.3, 4.5**
+  - [x] 6.4 Write property test for event emission completeness
+    - **Property 4: Event Emission Completeness**
+    - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
+
+- [x] 7. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 8. Integrate with ResurrectionOrchestrator
+  - [x] 8.1 Add post-resurrection validation step to orchestrator
+    - Call PostResurrectionValidator after dependency updates
+    - Handle validation results and update resurrection status
+    - _Requirements: 1.1, 4.5_
+  - [x] 8.2 Wire up event emission to SSE server
+    - Forward validation events to frontend via SSE
+    - Update frontend types for new event types
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+
+- [ ] 9. Add report generation for validation results
+  - [ ] 9.1 Extend reporting service with validation summary
+    - Include iteration count, applied fixes, remaining errors
+    - Include fix history for repository
+    - _Requirements: 6.4_
+
+- [ ] 10. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

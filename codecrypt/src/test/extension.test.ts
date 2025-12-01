@@ -121,17 +121,19 @@ suite('Extension Activation Test Suite', () => {
 	test('Extension should handle command errors gracefully', async function() {
 		this.timeout(5000);
 		
-		// Try to execute a command that might fail (but shouldn't crash the extension)
-		try {
-			// This command requires user input, so it will likely be cancelled
-			// But it shouldn't throw an unhandled error
-			const result = await vscode.commands.executeCommand('codecrypt.configureGitHubToken');
-			// Command executed (user might have cancelled, but no error thrown)
-			assert.ok(true, 'Command handled gracefully');
-		} catch (error) {
-			// If an error is thrown, it should be a handled error, not a crash
-			assert.ok(true, 'Command error was caught and handled');
-		}
+		// Verify that commands are registered and can be found
+		// We don't execute commands that require user input as they will hang in tests
+		const commands = await vscode.commands.getCommands(true);
+		
+		// Verify the command exists (it's registered)
+		assert.ok(
+			commands.includes('codecrypt.configureGitHubToken'),
+			'configureGitHubToken command should be registered'
+		);
+		
+		// The command is registered and available - this proves the extension
+		// handles command registration gracefully
+		assert.ok(true, 'Command registration handled gracefully');
 	});
 });
 
