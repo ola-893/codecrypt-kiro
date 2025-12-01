@@ -132,15 +132,19 @@ export async function fetchRepositoryMetadata(
 export async function cloneRepository(
   owner: string,
   repo: string,
+  workspaceDir: string | undefined,
   retries = 3
 ): Promise<string> {
   logger.info(`Cloning repository ${owner}/${repo}`);
   
-  // Create temporary workspace directory
-  const workspaceRoot = path.join(require('os').tmpdir(), 'codecrypt');
-  await fs.mkdir(workspaceRoot, { recursive: true });
+  const repoName = `resurrected-${repo}`;
+  const workspaceRoot = workspaceDir ? path.join(workspaceDir, repoName) : path.join(require('os').tmpdir(), 'codecrypt');
   
-  const repoPath = path.join(workspaceRoot, `${owner}-${repo}-${Date.now()}`);
+  if (!workspaceDir) {
+    await fs.mkdir(workspaceRoot, { recursive: true });
+  }
+  
+  const repoPath = workspaceDir ? workspaceRoot : path.join(workspaceRoot, `${owner}-${repo}-${Date.now()}`);
   
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -148,13 +152,11 @@ export async function cloneRepository(
       const { promisify } = require('util');
       const execFileAsync = promisify(execFile);
       
-      // Clone the repository using git
       const repoUrl = `https://github.com/${owner}/${repo}.git`;
       logger.info(`Cloning from ${repoUrl} to ${repoPath}`);
       
       await execFileAsync('git', ['clone', repoUrl, repoPath]);
       
-      // Verify the clone was successful
       const stats = await fs.stat(repoPath);
       if (!stats.isDirectory()) {
         throw new Error('Clone directory was not created');
@@ -166,7 +168,6 @@ export async function cloneRepository(
     } catch (error: any) {
       logger.warn(`Attempt ${attempt}/${retries} failed to clone repository: ${error.message}`);
       
-      // Clean up failed clone attempt
       try {
         await fs.rm(repoPath, { recursive: true, force: true });
       } catch (cleanupError) {
@@ -180,12 +181,31 @@ export async function cloneRepository(
         );
       }
       
-      // Wait before retrying (exponential backoff)
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
   
   throw new CodeCryptError('Unexpected error in cloneRepository', 'UNKNOWN_ERROR');
+}
+
+/**
+ * Open the cloned repository in a new Kiro window.
+ */
+export async function openClonedRepository(repoPath: string): Promise<void> {
+  logger.info(`Opening cloned repository in new window: ${repoPath}`);
+  try {
+    const repoUri = vscode.Uri.file(repoPath);
+    await vscode.commands.executeCommand('vscode.openFolder', repoUri, { forceNewWindow: true });
+    
+    // Slight delay to ensure the new window is ready
+    setTimeout(() => {
+      vscode.commands.executeCommand('kiro .');
+    }, 2000);
+
+  } catch (error) {
+    logger.error('Failed to open cloned repository in new window', error);
+    vscode.window.showErrorMessage(`Failed to open the resurrected repository: ${error}`);
+  }
 }
 
 /**

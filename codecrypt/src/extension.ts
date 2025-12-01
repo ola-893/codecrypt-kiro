@@ -122,9 +122,18 @@ export function activate(context: vscode.ExtensionContext) {
 							let repoPath: string;
 							
 							try {
-								repoPath = await cloneRepository(owner, repo);
+								// Get the current workspace folder
+								const workspaceFolders = vscode.workspace.workspaceFolders;
+								const workspaceDir = workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : undefined;
+
+								repoPath = await cloneRepository(owner, repo, workspaceDir);
 								context.repoPath = repoPath;
 								logger.info(`Repository cloned to: ${repoPath}`);
+								
+								// Open the cloned repository in a new window
+								const { openClonedRepository } = await import('./services/github.js');
+								await openClonedRepository(repoPath);
+
 							} catch (error) {
 								throw new Error(`Failed to clone repository: ${formatErrorForUser(error)}`);
 							}

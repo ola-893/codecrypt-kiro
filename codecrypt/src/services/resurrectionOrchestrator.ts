@@ -10,7 +10,8 @@ import { getLogger } from '../utils/logger';
 import { getEventEmitter } from './eventEmitter';
 import { createSSEServer, SSEServer } from './sseServer';
 import { analyzeRepository } from './astAnalysis';
-import { analyzeRepository as analyzeLLMRepository, LLMClient } from './llmAnalysis';
+import { analyzeRepository as analyzeLLMRepository, LLMClient, GeminiClient, createLLMClient } from './llmAnalysis';
+import { getSecureConfig } from './secureConfig';
 import { combineInsights } from './hybridAnalysis';
 import { runTimeMachineValidation, hasTestScript } from './timeMachine';
 import { MetricsService } from './metrics';
@@ -180,31 +181,51 @@ export class ResurrectionOrchestrator {
         });
 
         try {
-          // Check for API key
-          const apiKey = process.env.ANTHROPIC_API_KEY || '';
-          if (!apiKey) {
-            logger.warn('ANTHROPIC_API_KEY not configured, skipping LLM analysis');
-            this.eventEmitter.emitNarration({
-              message: 'AI analysis skipped: API key not configured.',
-              category: 'info',
-            });
-          } else {
+          const secureConfig = getSecureConfig();
+          const config = vscode.workspace.getConfiguration('codecrypt');
+          const preferredProvider = config.get<string>('llmProvider', 'anthropic');
+
+          let llmClient: LLMClient | GeminiClient | undefined;
+          let usedProvider: string | undefined;
+
+          const anthropicApiKey = await secureConfig.getAnthropicApiKey();
+          const geminiApiKey = await secureConfig.getGeminiApiKey();
+
+          // Determine which client to use based on preference and available keys
+          if (preferredProvider === 'gemini' && geminiApiKey) {
+            logger.info('Using configured Gemini provider.');
+            llmClient = new GeminiClient({ apiKey: geminiApiKey });
+            usedProvider = 'gemini';
+          } else if (preferredProvider === 'anthropic' && anthropicApiKey) {
+            logger.info('Using configured Anthropic provider.');
+            llmClient = new LLMClient({ apiKey: anthropicApiKey });
+            usedProvider = 'anthropic';
+          } else if (geminiApiKey) {
+            // Fallback to Gemini if its key is available
+            logger.info('Falling back to Gemini provider because its API key is configured.');
+            llmClient = new GeminiClient({ apiKey: geminiApiKey });
+            usedProvider = 'gemini';
+          } else if (anthropicApiKey) {
+            // Fallback to Anthropic if its key is available
+            logger.info('Falling back to Anthropic provider because its API key is configured.');
+            llmClient = new LLMClient({ apiKey: anthropicApiKey });
+            usedProvider = 'anthropic';
+          }
+          
+          if (llmClient && usedProvider) {
             const llmCache = getLLMCache();
-            const cacheKey = `llm:${this.state.context.repoPath}`;
+            const cacheKey = `llm:${this.state.context.repoPath}:${usedProvider}`;
             
-            // Check cache first
             const cachedLLM = llmCache.get(cacheKey);
             if (cachedLLM) {
               logger.info('Using cached LLM analysis');
               llmAnalysis = cachedLLM;
             } else {
-              logger.info('Performing fresh LLM analysis');
-              const llmClient = new LLMClient({ apiKey });
+              logger.info(`Performing fresh LLM analysis with ${usedProvider}`);
               llmAnalysis = await analyzeLLMRepository(llmClient, this.state.context.repoPath, astAnalysis);
               llmCache.set(cacheKey, llmAnalysis);
             }
             
-            // Emit insights for each file
             for (const insight of llmAnalysis.insights) {
               this.eventEmitter.emitLLMInsight({
                 filePath: insight.filePath,
@@ -213,6 +234,12 @@ export class ResurrectionOrchestrator {
               });
             }
             logger.info(`LLM analysis complete: ${llmAnalysis.insights.length} files analyzed`);
+          } else {
+            logger.warn('No LLM API keys are configured, skipping LLM analysis.');
+            this.eventEmitter.emitNarration({
+              message: 'AI analysis skipped: No API key configured for Anthropic or Gemini.',
+              category: 'info',
+            });
           }
         } catch (error: any) {
           logger.warn('LLM analysis failed, continuing with AST only', error);

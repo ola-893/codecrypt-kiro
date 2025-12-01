@@ -71,10 +71,12 @@
     - _Requirements: FR-005_
   
   - [x] 6.2 Implement validation after each update
-    - Run compilation check (if TypeScript)
-    - Execute test suite via `npm test`
-    - Capture test results and errors
-    - _Requirements: FR-006_
+    - **Detect TypeScript projects via tsconfig.json**
+    - **Run compilation check using `tsc --noEmit` (if TypeScript)**
+    - **Execute test suite via sandboxed `npm test`**
+    - **Capture compilation errors and test results**
+    - **Return ValidationResult with compilation and test status**
+    - _Requirements: FR-003, FR-006_
   
   - [x] 6.3 Implement simple code transformation engine
     - Create transformation rules JSON file
@@ -444,6 +446,7 @@
 
 - [x] 24. Update Reporting with New Features
   - [x] 24.1 Enhance Resurrection Report
+    - Include validation results for each dependency update (compilation + tests)
     - Add AST analysis insights section
     - Add LLM semantic insights section
     - Add complexity metrics (before/after)
@@ -572,3 +575,153 @@
     - Add provider comparison guide
     - Update configuration examples
     - _Requirements: NFR-004_
+
+- [ ] 29. Implement Compilation Proof Engine (CORE FEATURE)
+  - [ ] 29.1 Create BaselineCompilationResult types
+    - Add `BaselineCompilationResult` interface to types.ts
+    - Add `CompilationError` interface with file, line, column, message, code
+    - Add `CategorizedError` interface extending CompilationError with category
+    - Add `ErrorCategory` type (type, import, syntax, dependency, config)
+    - Add `CompilationStrategy` type (typescript, npm-build, webpack, vite, custom)
+    - Add `FixSuggestion` interface for automatic fix suggestions
+    - Add `ResurrectionVerdict` interface with errorsByCategory
+    - Add `baselineCompilation`, `finalCompilation`, `resurrectionVerdict` to ResurrectionContext
+    - _Requirements: FR-001, FR-003_
+  
+  - [ ] 29.2 Implement compilation strategy detection
+    - Create `compilationProof.ts` service file
+    - Implement `detectCompilationStrategy()` to identify project type
+    - Check for tsconfig.json (TypeScript)
+    - Check for vite.config.js/ts (Vite)
+    - Check for webpack.config.js (Webpack)
+    - Check for build script in package.json (npm-build)
+    - _Requirements: FR-001_
+  
+  - [ ] 29.3 Implement multiple compilation runners
+    - Implement `runTypeScriptCompilation()` using `tsc --noEmit`
+    - Implement `runNpmBuild()` using `npm run build`
+    - Implement `runWebpackBuild()` using `npx webpack --mode production`
+    - Implement `runViteBuild()` using `npx vite build`
+    - Implement `runCompilation()` dispatcher that uses detected strategy
+    - _Requirements: FR-001_
+  
+  - [ ] 29.4 Implement error parsing and categorization
+    - Implement `parseCompilationErrors()` to extract structured errors from output
+    - Implement `categorizeError()` to classify errors by type
+    - Parse TypeScript error codes (TS2xxx = type, TS1xxx = syntax, etc.)
+    - Parse npm/webpack error messages for import/dependency issues
+    - Group errors by category in result
+    - _Requirements: FR-001_
+  
+  - [ ] 29.5 Implement automatic fix suggestion generator
+    - Implement `generateFixSuggestions()` based on error categories
+    - For type errors: Suggest type annotations or any casts
+    - For import errors: Extract missing modules and suggest npm install
+    - For syntax errors: Suggest common syntax corrections
+    - For dependency errors: Suggest version updates
+    - For config errors: Suggest tsconfig modifications
+    - Mark which fixes are auto-applicable
+    - _Requirements: FR-003_
+  
+  - [ ] 29.6 Implement baseline compilation check main function
+    - Implement `runBaselineCompilationCheck()` that:
+      - Detects compilation strategy
+      - Runs appropriate compiler
+      - Parses and categorizes errors
+      - Generates fix suggestions
+      - Returns complete BaselineCompilationResult
+    - _Requirements: FR-001_
+  
+  - [ ] 29.7 Integrate baseline check into extension flow
+    - Call `runBaselineCompilationCheck()` after cloning, before any modifications
+    - Store result in `context.baselineCompilation`
+    - Emit `baseline_compilation_complete` event
+    - Update Death Certificate to include compilation failure details with category breakdown
+    - Add narration for baseline compilation status
+    - _Requirements: FR-001_
+  
+  - [ ] 29.8 Implement final compilation verification
+    - Implement `runFinalCompilationCheck()` (reuses baseline logic)
+    - Call after all resurrection steps complete
+    - Store result in `context.finalCompilation`
+    - _Requirements: FR-003_
+  
+  - [ ] 29.9 Implement resurrection verdict generator
+    - Implement `generateResurrectionVerdict()` function
+    - Compare baseline vs final compilation results
+    - Calculate `errorsFixed`, `errorsRemaining` by category
+    - Identify which specific errors were fixed
+    - Detect any new errors introduced during resurrection
+    - Determine `resurrected` boolean (baseline failed AND final passed)
+    - Generate error diff by category
+    - _Requirements: FR-003_
+  
+  - [ ] 29.10 Integrate final check and verdict into orchestrator
+    - Add final compilation check to `ResurrectionOrchestrator`
+    - Generate and store resurrection verdict
+    - Emit `resurrection_verdict` event
+    - Add narration for resurrection success/failure with category details
+    - _Requirements: FR-003_
+  
+  - [ ] 29.11 Write unit tests for compilation proof engine
+    - Test compilation strategy detection
+    - Test each compilation runner
+    - Test error parsing and categorization
+    - Test fix suggestion generation
+    - Test verdict generation logic
+    - Test baseline vs final comparison
+    - _Requirements: FR-001, FR-003_
+
+- [ ] 30. Update Reporting with Resurrection Proof
+  - [ ] 30.1 Add Resurrection Proof section to report
+    - Add "Resurrection Proof" section at top of report
+    - Show baseline compilation status with error count
+    - Show final compilation status with error count
+    - Display resurrection verdict (RESURRECTED / NOT RESURRECTED / ALREADY COMPILING)
+    - Show error breakdown by category (type, import, syntax, dependency, config)
+    - List errors that were fixed with category labels
+    - List any remaining errors with category labels
+    - Show which fix suggestions were applied
+    - _Requirements: FR-010_
+  
+  - [ ] 30.2 Update report generation service
+    - Modify `generateResurrectionReport()` to include verdict
+    - Add compilation error diff formatting by category
+    - Add visual indicators (✅/❌) for compilation status
+    - Add category-based error summary table
+    - Include fix suggestions that were applied
+    - _Requirements: FR-010_
+  
+  - [ ] 30.3 Write tests for updated reporting
+    - Test report generation with resurrection verdict
+    - Test error diff formatting by category
+    - Test fix suggestion display
+    - _Requirements: FR-010_
+
+- [ ] 31. Add Frontend Events for Compilation Proof
+  - [ ] 31.1 Add new event types to event emitter
+    - Add `baseline_compilation_complete` event type
+    - Add `final_compilation_complete` event type
+    - Add `resurrection_verdict` event type
+    - Update SSE server to forward new events
+    - _Requirements: FR-001, FR-003_
+  
+  - [ ] 31.2 Update Dashboard to show compilation status
+    - Add "Compilation Status" card to dashboard
+    - Show baseline error count
+    - Show current/final error count
+    - Show resurrection progress indicator
+    - _Requirements: FR-005_
+  
+  - [ ] 31.3 Add narration for compilation events
+    - Narrate baseline compilation result
+    - Narrate final compilation result
+    - Narrate resurrection verdict with enthusiasm
+    - _Requirements: FR-006_
+
+- [ ] 32. Final Checkpoint - Verify Compilation Proof Works
+  - Ensure all tests pass, ask the user if questions arise.
+  - Test with a real dead TypeScript repository
+  - Verify baseline shows compilation errors
+  - Verify final shows compilation success (or remaining errors)
+  - Verify report includes resurrection proof section

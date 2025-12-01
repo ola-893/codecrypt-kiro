@@ -11,6 +11,21 @@ This document outlines the requirements for the complete CodeCrypt Resurrection 
 #### FR-001: Repository Input & Death Detection
 - The system shall accept a public GitHub repository URL.
 - It shall clone the repository and classify it as "dead" if the last commit is older than two years, producing a basic `Death Certificate`.
+- **Baseline Compilation Check:** After cloning, the system shall attempt to compile the repository to establish a baseline:
+  - **Multiple Compilation Strategies:** The system shall detect and use the appropriate compilation strategy:
+    - TypeScript projects: Run `tsc --noEmit`
+    - JavaScript with build script: Run `npm run build`
+    - Webpack projects: Run `npx webpack --mode production`
+    - Vite projects: Run `npx vite build`
+    - Custom build scripts: Detect and run project-specific build commands
+  - **Error Categorization:** The system shall categorize compilation errors into:
+    - Type errors (TS2xxx codes, type mismatches)
+    - Import/Module errors (cannot find module, missing exports)
+    - Syntax errors (unexpected token, parsing failures)
+    - Dependency errors (missing packages, version conflicts)
+    - Configuration errors (tsconfig issues, webpack config problems)
+  - Store the baseline compilation result (success/failure, error count, categorized errors) in the ResurrectionContext
+  - Document compilation failures in the Death Certificate as "Cause of Death: Compilation Failure" with error breakdown by category
 
 #### FR-002: Dependency Analysis & Planning (npm)
 - The system shall parse `package.json` to identify outdated dependencies and known security vulnerabilities.
@@ -18,9 +33,23 @@ This document outlines the requirements for the complete CodeCrypt Resurrection 
 
 #### FR-003: Automated Resurrection & Validation
 - The system shall create a new branch for the modernized code.
-- It shall iteratively update dependencies, run `npm install`, and execute the project's test suite (`npm test`).
+- It shall iteratively update dependencies, run `npm install`, and execute validation after each update.
+- **After each dependency update:** For TypeScript projects, the system shall run compilation checks (`tsc --noEmit`) to verify the code compiles.
+- **After each dependency update:** If a test script exists, the system shall execute the test suite to verify functional correctness.
+- **Automatic Fix Suggestions:** Based on error categories, the system shall suggest and optionally apply fixes:
+  - **Type errors:** Suggest type annotations, any casts, or @ts-ignore comments
+  - **Import errors:** Suggest package installation, path corrections, or import syntax updates
+  - **Syntax errors:** Suggest syntax corrections based on common patterns
+  - **Dependency errors:** Suggest specific version updates or alternative packages
+  - **Configuration errors:** Suggest tsconfig or build config modifications
 - The system will attempt a small, predefined set of automated code fixes for common breaking changes.
-- If a change fails validation, it will be rolled back, and the dependency marked as problematic.
+- If a change fails validation (compilation or tests), it will be rolled back, and the dependency marked as problematic.
+- **Final Compilation Verification:** After all resurrection steps complete, the system shall:
+  - Run a final compilation check using the same strategy as the baseline
+  - Compare final compilation result against baseline by error category
+  - Calculate "resurrection success" based on: baseline failed → final passed
+  - Generate error diff showing which categories were fixed
+  - Store the comparison in ResurrectionContext for reporting
 
 ### Advanced Analysis Engine
 
@@ -85,9 +114,15 @@ This document outlines the requirements for the complete CodeCrypt Resurrection 
 ### FR-010: Output & Reporting
 - The system shall produce a final `Resurrection Report` in Markdown.
 - The report shall include:
+  - **Resurrection Proof Section:**
+    - Baseline compilation status (FAILED/PASSED) with error count
+    - Final compilation status (FAILED/PASSED) with error count
+    - Resurrection verdict: "RESURRECTED" if baseline failed and final passed
+    - Compilation error diff (errors fixed vs remaining)
   - Summary of changes made
   - List of updated dependencies with version changes
   - List of security vulnerabilities fixed
+  - Validation results for each update (compilation + tests where applicable)
   - AST and LLM analysis insights
   - Code complexity metrics (before and after)
   - Test coverage metrics (before and after)

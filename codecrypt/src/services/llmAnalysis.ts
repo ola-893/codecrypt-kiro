@@ -162,7 +162,7 @@ export class GeminiClient {
   constructor(config: GeminiConfig) {
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || 'gemini-pro',
+      model: config.model || 'gemini-2.5-pro',
       timeout: config.timeout || 30000, // 30 seconds
       maxRetries: config.maxRetries || 3,
     };
