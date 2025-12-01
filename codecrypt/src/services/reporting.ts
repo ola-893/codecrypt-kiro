@@ -11,7 +11,11 @@ import {
   VulnerabilityInfo,
   HybridAnalysis,
   MetricsSnapshot,
-  TimeMachineValidationResult
+  TimeMachineValidationResult,
+  ResurrectionVerdict,
+  ErrorCategory,
+  CategorizedError,
+  FixSuggestion
 } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
@@ -41,6 +45,8 @@ export interface ResurrectionReport {
   };
   /** Time Machine validation results */
   timeMachineResults?: TimeMachineValidationResult;
+  /** Resurrection verdict with compilation proof */
+  resurrectionVerdict?: ResurrectionVerdict;
   /** Path to 3D Ghost Tour HTML file */
   ghostTourPath?: string;
   /** Path to Resurrection Symphony audio file */
@@ -107,6 +113,8 @@ export interface ReportGenerationOptions {
   metricsAfter?: MetricsSnapshot;
   /** Time Machine validation results */
   timeMachineResults?: TimeMachineValidationResult;
+  /** Resurrection verdict with compilation proof */
+  resurrectionVerdict?: ResurrectionVerdict;
   /** Path to 3D Ghost Tour HTML file */
   ghostTourPath?: string;
   /** Path to Resurrection Symphony audio file */
@@ -161,6 +169,7 @@ export function generateResurrectionReport(
     hybridAnalysis: options.hybridAnalysis,
     metricsComparison,
     timeMachineResults: options.timeMachineResults,
+    resurrectionVerdict: options.resurrectionVerdict,
     ghostTourPath: options.ghostTourPath,
     symphonyPath: options.symphonyPath,
     dashboardScreenshots: options.dashboardScreenshots
@@ -190,6 +199,7 @@ export function generateResurrectionReport(
     hybridAnalysis: options.hybridAnalysis,
     metricsComparison,
     timeMachineResults: options.timeMachineResults,
+    resurrectionVerdict: options.resurrectionVerdict,
     ghostTourPath: options.ghostTourPath,
     symphonyPath: options.symphonyPath,
     dashboardScreenshots: options.dashboardScreenshots,
@@ -321,6 +331,7 @@ function formatMarkdownReport(data: {
   hybridAnalysis?: HybridAnalysis;
   metricsComparison?: { before: MetricsSnapshot; after: MetricsSnapshot };
   timeMachineResults?: TimeMachineValidationResult;
+  resurrectionVerdict?: ResurrectionVerdict;
   ghostTourPath?: string;
   symphonyPath?: string;
   dashboardScreenshots?: string[];
@@ -336,6 +347,141 @@ function formatMarkdownReport(data: {
     lines.push(`**Branch:** [${data.context.resurrectionBranch}](${data.branchUrl})`);
   }
   lines.push('');
+  
+  // Resurrection Proof Section (at the top)
+  if (data.resurrectionVerdict) {
+    lines.push('## 🔬 Resurrection Proof');
+    lines.push('');
+    
+    const verdict = data.resurrectionVerdict;
+    const baseline = verdict.baselineCompilation;
+    const final = verdict.finalCompilation;
+    
+    // Determine verdict status
+    let verdictStatus: string;
+    let verdictIcon: string;
+    if (baseline.success && final.success) {
+      verdictStatus = 'ALREADY COMPILING';
+      verdictIcon = '✅';
+    } else if (verdict.resurrected) {
+      verdictStatus = 'RESURRECTED';
+      verdictIcon = '🧟';
+    } else {
+      verdictStatus = 'NOT RESURRECTED';
+      verdictIcon = '❌';
+    }
+    
+    lines.push(`### Verdict: ${verdictIcon} ${verdictStatus}`);
+    lines.push('');
+    
+    // Compilation status summary
+    lines.push('| Stage | Status | Error Count |');
+    lines.push('|-------|--------|-------------|');
+    lines.push(`| Baseline | ${baseline.success ? '✅ Passed' : '❌ Failed'} | ${baseline.errorCount} |`);
+    lines.push(`| Final | ${final.success ? '✅ Passed' : '❌ Failed'} | ${final.errorCount} |`);
+    lines.push('');
+    
+    // Error breakdown by category
+    if (baseline.errorCount > 0 || final.errorCount > 0) {
+      lines.push('### Error Breakdown by Category');
+      lines.push('');
+      lines.push('| Category | Baseline | Final | Fixed |');
+      lines.push('|----------|----------|-------|-------|');
+      
+      const categories: ErrorCategory[] = ['type', 'import', 'syntax', 'dependency', 'config'];
+      for (const category of categories) {
+        const baselineCount = baseline.errorsByCategory[category] || 0;
+        const finalCount = final.errorsByCategory[category] || 0;
+        const fixedCount = verdict.errorsFixedByCategory[category] || 0;
+        
+        if (baselineCount > 0 || finalCount > 0) {
+          const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
+          const fixedIndicator = fixedCount > 0 ? `✅ ${fixedCount}` : '-';
+          lines.push(`| ${categoryLabel} | ${baselineCount} | ${finalCount} | ${fixedIndicator} |`);
+        }
+      }
+      lines.push('');
+    }
+    
+    // Summary of fixes
+    if (verdict.errorsFixed > 0) {
+      lines.push(`**Errors Fixed:** ${verdict.errorsFixed}`);
+      lines.push('');
+    }
+    
+    if (verdict.errorsRemaining > 0) {
+      lines.push(`**Errors Remaining:** ${verdict.errorsRemaining}`);
+      lines.push('');
+    }
+    
+    // Fixed errors list (limited to first 10)
+    if (verdict.fixedErrors.length > 0) {
+      lines.push('### Errors Fixed');
+      lines.push('');
+      
+      const displayErrors = verdict.fixedErrors.slice(0, 10);
+      for (const error of displayErrors) {
+        const categoryBadge = `[${error.category.toUpperCase()}]`;
+        lines.push(`- ${categoryBadge} \`${error.file}:${error.line}\` - ${error.message}`);
+      }
+      
+      if (verdict.fixedErrors.length > 10) {
+        lines.push(`- ... and ${verdict.fixedErrors.length - 10} more`);
+      }
+      lines.push('');
+    }
+    
+    // Remaining errors list (limited to first 10)
+    if (verdict.errorsRemaining > 0 && final.errors.length > 0) {
+      lines.push('### Remaining Errors');
+      lines.push('');
+      
+      const displayErrors = final.errors.slice(0, 10);
+      for (const error of displayErrors) {
+        const categoryBadge = `[${error.category.toUpperCase()}]`;
+        lines.push(`- ${categoryBadge} \`${error.file}:${error.line}\` - ${error.message}`);
+      }
+      
+      if (final.errors.length > 10) {
+        lines.push(`- ... and ${final.errors.length - 10} more`);
+      }
+      lines.push('');
+    }
+    
+    // New errors introduced (if any)
+    if (verdict.newErrors.length > 0) {
+      lines.push('### ⚠️ New Errors Introduced');
+      lines.push('');
+      
+      const displayErrors = verdict.newErrors.slice(0, 5);
+      for (const error of displayErrors) {
+        const categoryBadge = `[${error.category.toUpperCase()}]`;
+        lines.push(`- ${categoryBadge} \`${error.file}:${error.line}\` - ${error.message}`);
+      }
+      
+      if (verdict.newErrors.length > 5) {
+        lines.push(`- ... and ${verdict.newErrors.length - 5} more`);
+      }
+      lines.push('');
+    }
+    
+    // Fix suggestions that were applied
+    if (baseline.suggestedFixes.length > 0) {
+      lines.push('### Fix Suggestions');
+      lines.push('');
+      
+      for (const fix of baseline.suggestedFixes) {
+        const autoIcon = fix.autoApplicable ? '🔧' : '📝';
+        lines.push(`- ${autoIcon} **${fix.errorCategory.toUpperCase()}**: ${fix.description}`);
+        if (fix.details && fix.details.length > 0) {
+          for (const detail of fix.details.slice(0, 3)) {
+            lines.push(`  - ${detail}`);
+          }
+        }
+      }
+      lines.push('');
+    }
+  }
   
   // Summary
   lines.push('## Summary');
@@ -942,6 +1088,81 @@ async function formatHTMLReport(report: ResurrectionReport): Promise<string> {
     </header>
     
     <main>
+      ${report.resurrectionVerdict ? `
+      <!-- Resurrection Proof -->
+      <section class="section">
+        <h2>🔬 Resurrection Proof</h2>
+        ${(() => {
+          const verdict = report.resurrectionVerdict!;
+          const baseline = verdict.baselineCompilation;
+          const final = verdict.finalCompilation;
+          let verdictStatus: string;
+          let verdictIcon: string;
+          let verdictClass: string;
+          if (baseline.success && final.success) {
+            verdictStatus = 'ALREADY COMPILING';
+            verdictIcon = '✅';
+            verdictClass = 'info';
+          } else if (verdict.resurrected) {
+            verdictStatus = 'RESURRECTED';
+            verdictIcon = '🧟';
+            verdictClass = 'success';
+          } else {
+            verdictStatus = 'NOT RESURRECTED';
+            verdictIcon = '❌';
+            verdictClass = 'error';
+          }
+          return `
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-value ${verdictClass}">${verdictIcon}</span>
+                <span class="stat-label">${verdictStatus}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value ${baseline.success ? 'success' : 'error'}">${baseline.success ? '✅' : '❌'}</span>
+                <span class="stat-label">Baseline: ${baseline.errorCount} errors</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value ${final.success ? 'success' : 'error'}">${final.success ? '✅' : '❌'}</span>
+                <span class="stat-label">Final: ${final.errorCount} errors</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value success">${verdict.errorsFixed}</span>
+                <span class="stat-label">Errors Fixed</span>
+              </div>
+            </div>
+            <h3>Error Breakdown by Category</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Baseline</th>
+                  <th>Final</th>
+                  <th>Fixed</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${['type', 'import', 'syntax', 'dependency', 'config'].map(cat => {
+                  const baseCount = baseline.errorsByCategory[cat as ErrorCategory] || 0;
+                  const finalCount = final.errorsByCategory[cat as ErrorCategory] || 0;
+                  const fixedCount = verdict.errorsFixedByCategory[cat as ErrorCategory] || 0;
+                  if (baseCount === 0 && finalCount === 0) return '';
+                  return `
+                    <tr>
+                      <td>${cat.charAt(0).toUpperCase() + cat.slice(1)}</td>
+                      <td>${baseCount}</td>
+                      <td>${finalCount}</td>
+                      <td class="${fixedCount > 0 ? 'success' : ''}">${fixedCount > 0 ? '✅ ' + fixedCount : '-'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        })()}
+      </section>
+      ` : ''}
+      
       <!-- Statistics Overview -->
       <section class="section">
         <h2>📊 Statistics Overview</h2>

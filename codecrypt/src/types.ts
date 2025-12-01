@@ -105,6 +105,12 @@ export interface ResurrectionContext {
   resurrectionBranch?: string;
   /** Resurrection plan with ordered updates */
   resurrectionPlan?: ResurrectionPlan;
+  /** Baseline compilation result (before resurrection) */
+  baselineCompilation?: BaselineCompilationResult;
+  /** Final compilation result (after resurrection) */
+  finalCompilation?: BaselineCompilationResult;
+  /** Resurrection verdict comparing baseline and final */
+  resurrectionVerdict?: ResurrectionVerdict;
 }
 
 /**
@@ -418,7 +424,10 @@ export type ResurrectionEventType =
   | 'narration'
   | 'ast_analysis_complete'
   | 'llm_insight'
-  | 'validation_complete';
+  | 'validation_complete'
+  | 'baseline_compilation_complete'
+  | 'final_compilation_complete'
+  | 'resurrection_verdict';
 
 /**
  * Base event interface
@@ -542,4 +551,108 @@ export interface ValidationCompleteEventData {
   results: TimeMachineValidationResult;
   /** Summary message */
   summary: string;
+}
+
+// ============================================================================
+// Compilation Proof Engine Types
+// ============================================================================
+
+/**
+ * Error category for compilation errors
+ */
+export type ErrorCategory = 'type' | 'import' | 'syntax' | 'dependency' | 'config';
+
+/**
+ * Compilation strategy based on project type
+ */
+export type CompilationStrategy = 'typescript' | 'npm-build' | 'webpack' | 'vite' | 'custom';
+
+/**
+ * A single compilation error
+ */
+export interface CompilationError {
+  /** File path where the error occurred */
+  file: string;
+  /** Line number */
+  line: number;
+  /** Column number */
+  column: number;
+  /** Error message */
+  message: string;
+  /** Error code (e.g., "TS2307") */
+  code: string;
+}
+
+/**
+ * Compilation error with category classification
+ */
+export interface CategorizedError extends CompilationError {
+  /** Error category */
+  category: ErrorCategory;
+  /** Suggested fix for this error */
+  suggestedFix?: string;
+}
+
+/**
+ * Suggestion for fixing compilation errors
+ */
+export interface FixSuggestion {
+  /** Category of errors this fix addresses */
+  errorCategory: ErrorCategory;
+  /** Human-readable description of the fix */
+  description: string;
+  /** Whether this fix can be automatically applied */
+  autoApplicable: boolean;
+  /** Number of errors this fix would address */
+  errorCount: number;
+  /** Specific details for the fix (e.g., packages to install) */
+  details?: string[];
+}
+
+/**
+ * Result of a compilation check (baseline or final)
+ */
+export interface BaselineCompilationResult {
+  /** Timestamp when compilation was run */
+  timestamp: Date;
+  /** Whether compilation succeeded */
+  success: boolean;
+  /** Total number of errors */
+  errorCount: number;
+  /** List of all errors with categories */
+  errors: CategorizedError[];
+  /** Error count grouped by category */
+  errorsByCategory: Record<ErrorCategory, number>;
+  /** Raw compilation output */
+  output: string;
+  /** Detected project type */
+  projectType: 'typescript' | 'javascript' | 'unknown';
+  /** Compilation strategy used */
+  strategy: CompilationStrategy;
+  /** Suggested fixes based on error analysis */
+  suggestedFixes: FixSuggestion[];
+}
+
+/**
+ * Verdict comparing baseline and final compilation results
+ */
+export interface ResurrectionVerdict {
+  /** Baseline compilation result */
+  baselineCompilation: BaselineCompilationResult;
+  /** Final compilation result */
+  finalCompilation: BaselineCompilationResult;
+  /** True if baseline failed AND final passed */
+  resurrected: boolean;
+  /** Number of errors that were fixed */
+  errorsFixed: number;
+  /** Number of errors remaining */
+  errorsRemaining: number;
+  /** Errors fixed by category */
+  errorsFixedByCategory: Record<ErrorCategory, number>;
+  /** Errors remaining by category */
+  errorsRemainingByCategory: Record<ErrorCategory, number>;
+  /** List of specific errors that were fixed */
+  fixedErrors: CategorizedError[];
+  /** List of new errors introduced during resurrection */
+  newErrors: CategorizedError[];
 }

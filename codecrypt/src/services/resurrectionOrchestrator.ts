@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult } from '../types';
+import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult, BaselineCompilationResult, ResurrectionVerdict } from '../types';
 import { getLogger } from '../utils/logger';
 import { getEventEmitter } from './eventEmitter';
 import { createSSEServer, SSEServer } from './sseServer';
@@ -21,6 +21,7 @@ import { validateAfterUpdate } from './validation';
 import { rollbackLastCommit } from './rollback';
 import { generateResurrectionReport, ResurrectionReport } from './reporting';
 import { getLLMCache, getASTCache } from './cache';
+import { runBaselineCompilationCheck, runFinalCompilationCheck, generateResurrectionVerdict } from './compilationProof';
 
 const logger = getLogger();
 
@@ -122,6 +123,143 @@ export class ResurrectionOrchestrator {
         logger.warn('Error stopping SSE server', error);
         // Continue cleanup even if SSE server fails to stop
       }
+    }
+  }
+
+  /**
+   * Run baseline compilation check to establish the initial state
+   * This proves the repository is "dead" (doesn't compile)
+   */
+  async runBaselineCompilationCheck(): Promise<BaselineCompilationResult | undefined> {
+    if (!this.state.context.repoPath) {
+      logger.warn('No repository path set, skipping baseline compilation check');
+      return undefined;
+    }
+
+    logger.info('Running baseline compilation check');
+    this.eventEmitter.emitNarration({
+      message: 'Running baseline compilation check to establish initial state...',
+    });
+
+    try {
+      const result = await runBaselineCompilationCheck(this.state.context.repoPath);
+      this.state.context.baselineCompilation = result;
+
+      // Emit event for frontend
+      this.eventEmitter.emit('baseline_compilation_complete', {
+        type: 'baseline_compilation_complete',
+        timestamp: Date.now(),
+        data: result,
+      });
+
+      if (result.success) {
+        this.eventEmitter.emitNarration({
+          message: 'Repository compiles successfully! No compilation resurrection needed.',
+          category: 'success',
+        });
+      } else {
+        const categoryBreakdown = Object.entries(result.errorsByCategory)
+          .filter(([_, count]) => count > 0)
+          .map(([cat, count]) => `${count} ${cat}`)
+          .join(', ');
+        
+        this.eventEmitter.emitNarration({
+          message: `Compilation FAILED with ${result.errorCount} errors (${categoryBreakdown}). Beginning resurrection...`,
+          category: 'warning',
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      logger.error('Baseline compilation check failed', error);
+      this.eventEmitter.emitNarration({
+        message: `Baseline compilation check failed: ${error.message || String(error)}`,
+        category: 'error',
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Run final compilation check and generate resurrection verdict
+   */
+  async runFinalCompilationCheckAndVerdict(): Promise<ResurrectionVerdict | undefined> {
+    if (!this.state.context.repoPath) {
+      logger.warn('No repository path set, skipping final compilation check');
+      return undefined;
+    }
+
+    if (!this.state.context.baselineCompilation) {
+      logger.warn('No baseline compilation result, skipping final check');
+      return undefined;
+    }
+
+    logger.info('Running final compilation verification');
+    this.eventEmitter.emitNarration({
+      message: 'Running final compilation verification...',
+    });
+
+    try {
+      const finalResult = await runFinalCompilationCheck(this.state.context.repoPath);
+      this.state.context.finalCompilation = finalResult;
+
+      // Emit event for frontend
+      this.eventEmitter.emit('final_compilation_complete', {
+        type: 'final_compilation_complete',
+        timestamp: Date.now(),
+        data: finalResult,
+      });
+
+      // Generate resurrection verdict
+      const verdict = generateResurrectionVerdict(
+        this.state.context.baselineCompilation,
+        finalResult
+      );
+      this.state.context.resurrectionVerdict = verdict;
+
+      // Emit verdict event
+      this.eventEmitter.emit('resurrection_verdict', {
+        type: 'resurrection_verdict',
+        timestamp: Date.now(),
+        data: verdict,
+      });
+
+      // Narrate the verdict
+      if (verdict.resurrected) {
+        const fixedByCategory = Object.entries(verdict.errorsFixedByCategory)
+          .filter(([_, count]) => count > 0)
+          .map(([cat, count]) => `${count} ${cat}`)
+          .join(', ');
+        
+        this.eventEmitter.emitNarration({
+          message: `🎉 RESURRECTION SUCCESSFUL! Fixed ${verdict.errorsFixed} compilation errors (${fixedByCategory}).`,
+          category: 'success',
+        });
+      } else if (finalResult.success && this.state.context.baselineCompilation.success) {
+        this.eventEmitter.emitNarration({
+          message: 'Repository was already compiling. No compilation resurrection needed.',
+          category: 'info',
+        });
+      } else {
+        const remainingByCategory = Object.entries(verdict.errorsRemainingByCategory)
+          .filter(([_, count]) => count > 0)
+          .map(([cat, count]) => `${count} ${cat}`)
+          .join(', ');
+        
+        this.eventEmitter.emitNarration({
+          message: `Resurrection incomplete. ${verdict.errorsRemaining} errors remain (${remainingByCategory}).`,
+          category: 'warning',
+        });
+      }
+
+      return verdict;
+    } catch (error: any) {
+      logger.error('Final compilation check failed', error);
+      this.eventEmitter.emitNarration({
+        message: `Final compilation check failed: ${error.message || String(error)}`,
+        category: 'error',
+      });
+      return undefined;
     }
   }
 

@@ -16,7 +16,8 @@ import {
   ResurrectionContext,
   HybridAnalysis,
   MetricsSnapshot,
-  TimeMachineValidationResult
+  TimeMachineValidationResult,
+  ResurrectionVerdict
 } from '../types';
 
 suite('Reporting Service', () => {
@@ -1034,6 +1035,295 @@ suite('Reporting Service', () => {
       assert.ok(report.markdown.includes('**Functional Equivalence:** ⚠️ Differences detected'));
       assert.ok(report.markdown.includes('### Validation Errors'));
       assert.ok(report.markdown.includes('5 tests failed in modernized version'));
+    });
+  });
+
+  suite('Resurrection Verdict Reporting', () => {
+    test('should include resurrection proof section when verdict is provided', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const resurrectionVerdict = {
+        baselineCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 15,
+          errors: [
+            { file: 'src/index.ts', line: 10, column: 5, code: 'TS2307', message: "Cannot find module 'express'", category: 'import' as const },
+            { file: 'src/utils.ts', line: 20, column: 10, code: 'TS2345', message: 'Type error', category: 'type' as const }
+          ],
+          errorsByCategory: { type: 5, import: 8, syntax: 1, dependency: 1, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: [
+            { errorCategory: 'import' as const, description: 'Install missing packages: npm install express', autoApplicable: true, errorCount: 8, details: ['express'] }
+          ]
+        },
+        finalCompilation: {
+          timestamp: new Date(),
+          success: true,
+          errorCount: 0,
+          errors: [],
+          errorsByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation successful',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        resurrected: true,
+        errorsFixed: 15,
+        errorsRemaining: 0,
+        errorsFixedByCategory: { type: 5, import: 8, syntax: 1, dependency: 1, config: 0 },
+        errorsRemainingByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+        fixedErrors: [
+          { file: 'src/index.ts', line: 10, column: 5, code: 'TS2307', message: "Cannot find module 'express'", category: 'import' as const }
+        ],
+        newErrors: []
+      };
+
+      const options: ReportGenerationOptions = {
+        resurrectionVerdict
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      // Verify resurrection proof section exists
+      assert.ok(report.markdown.includes('## 🔬 Resurrection Proof'));
+      assert.ok(report.markdown.includes('### Verdict: 🧟 RESURRECTED'));
+      
+      // Verify compilation status table
+      assert.ok(report.markdown.includes('| Baseline | ❌ Failed | 15 |'));
+      assert.ok(report.markdown.includes('| Final | ✅ Passed | 0 |'));
+      
+      // Verify error breakdown by category
+      assert.ok(report.markdown.includes('### Error Breakdown by Category'));
+      assert.ok(report.markdown.includes('| Type | 5 | 0 | ✅ 5 |'));
+      assert.ok(report.markdown.includes('| Import | 8 | 0 | ✅ 8 |'));
+      
+      // Verify errors fixed count
+      assert.ok(report.markdown.includes('**Errors Fixed:** 15'));
+      
+      // Verify fixed errors list
+      assert.ok(report.markdown.includes('### Errors Fixed'));
+      assert.ok(report.markdown.includes("[IMPORT] `src/index.ts:10` - Cannot find module 'express'"));
+      
+      // Verify fix suggestions
+      assert.ok(report.markdown.includes('### Fix Suggestions'));
+      assert.ok(report.markdown.includes('Install missing packages: npm install express'));
+    });
+
+    test('should show NOT RESURRECTED verdict when final compilation still fails', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const resurrectionVerdict = {
+        baselineCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 10,
+          errors: [],
+          errorsByCategory: { type: 5, import: 3, syntax: 2, dependency: 0, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        finalCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 3,
+          errors: [
+            { file: 'src/index.ts', line: 15, column: 5, code: 'TS2345', message: 'Type mismatch', category: 'type' as const }
+          ],
+          errorsByCategory: { type: 3, import: 0, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        resurrected: false,
+        errorsFixed: 7,
+        errorsRemaining: 3,
+        errorsFixedByCategory: { type: 2, import: 3, syntax: 2, dependency: 0, config: 0 },
+        errorsRemainingByCategory: { type: 3, import: 0, syntax: 0, dependency: 0, config: 0 },
+        fixedErrors: [],
+        newErrors: []
+      };
+
+      const options: ReportGenerationOptions = {
+        resurrectionVerdict
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('### Verdict: ❌ NOT RESURRECTED'));
+      assert.ok(report.markdown.includes('**Errors Fixed:** 7'));
+      assert.ok(report.markdown.includes('**Errors Remaining:** 3'));
+      assert.ok(report.markdown.includes('### Remaining Errors'));
+    });
+
+    test('should show ALREADY COMPILING verdict when baseline passes', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const resurrectionVerdict = {
+        baselineCompilation: {
+          timestamp: new Date(),
+          success: true,
+          errorCount: 0,
+          errors: [],
+          errorsByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation successful',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        finalCompilation: {
+          timestamp: new Date(),
+          success: true,
+          errorCount: 0,
+          errors: [],
+          errorsByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation successful',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        resurrected: false,
+        errorsFixed: 0,
+        errorsRemaining: 0,
+        errorsFixedByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+        errorsRemainingByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+        fixedErrors: [],
+        newErrors: []
+      };
+
+      const options: ReportGenerationOptions = {
+        resurrectionVerdict
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('### Verdict: ✅ ALREADY COMPILING'));
+      assert.ok(report.markdown.includes('| Baseline | ✅ Passed | 0 |'));
+      assert.ok(report.markdown.includes('| Final | ✅ Passed | 0 |'));
+    });
+
+    test('should show new errors introduced during resurrection', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const resurrectionVerdict = {
+        baselineCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 5,
+          errors: [],
+          errorsByCategory: { type: 3, import: 2, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        finalCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 2,
+          errors: [],
+          errorsByCategory: { type: 1, import: 0, syntax: 1, dependency: 0, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        resurrected: false,
+        errorsFixed: 5,
+        errorsRemaining: 2,
+        errorsFixedByCategory: { type: 3, import: 2, syntax: 0, dependency: 0, config: 0 },
+        errorsRemainingByCategory: { type: 1, import: 0, syntax: 1, dependency: 0, config: 0 },
+        fixedErrors: [],
+        newErrors: [
+          { file: 'src/new.ts', line: 5, column: 1, code: 'TS1005', message: 'Unexpected token', category: 'syntax' as const }
+        ]
+      };
+
+      const options: ReportGenerationOptions = {
+        resurrectionVerdict
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('### ⚠️ New Errors Introduced'));
+      assert.ok(report.markdown.includes('[SYNTAX] `src/new.ts:5` - Unexpected token'));
+    });
+
+    test('should include resurrection verdict in report object', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const resurrectionVerdict = {
+        baselineCompilation: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 10,
+          errors: [],
+          errorsByCategory: { type: 5, import: 5, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation failed',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        finalCompilation: {
+          timestamp: new Date(),
+          success: true,
+          errorCount: 0,
+          errors: [],
+          errorsByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+          output: 'Compilation successful',
+          projectType: 'typescript' as const,
+          strategy: 'typescript' as const,
+          suggestedFixes: []
+        },
+        resurrected: true,
+        errorsFixed: 10,
+        errorsRemaining: 0,
+        errorsFixedByCategory: { type: 5, import: 5, syntax: 0, dependency: 0, config: 0 },
+        errorsRemainingByCategory: { type: 0, import: 0, syntax: 0, dependency: 0, config: 0 },
+        fixedErrors: [],
+        newErrors: []
+      };
+
+      const options: ReportGenerationOptions = {
+        resurrectionVerdict
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.resurrectionVerdict);
+      assert.strictEqual(report.resurrectionVerdict?.resurrected, true);
+      assert.strictEqual(report.resurrectionVerdict?.errorsFixed, 10);
+      assert.strictEqual(report.resurrectionVerdict?.errorsRemaining, 0);
     });
   });
 });
