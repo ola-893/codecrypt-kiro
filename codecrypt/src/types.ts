@@ -553,6 +553,36 @@ export interface ValidationCompleteEventData {
   summary: string;
 }
 
+/**
+ * Baseline compilation complete event payload
+ */
+export interface BaselineCompilationCompleteEventData {
+  /** Compilation result */
+  result: BaselineCompilationResult;
+  /** Summary message */
+  summary: string;
+}
+
+/**
+ * Final compilation complete event payload
+ */
+export interface FinalCompilationCompleteEventData {
+  /** Compilation result */
+  result: BaselineCompilationResult;
+  /** Summary message */
+  summary: string;
+}
+
+/**
+ * Resurrection verdict event payload
+ */
+export interface ResurrectionVerdictEventData {
+  /** Resurrection verdict */
+  verdict: ResurrectionVerdict;
+  /** Summary message */
+  summary: string;
+}
+
 // ============================================================================
 // Compilation Proof Engine Types
 // ============================================================================

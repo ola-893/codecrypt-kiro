@@ -69,6 +69,9 @@ export class SSEServer {
         'ast_analysis_complete',
         'llm_insight',
         'validation_complete',
+        'baseline_compilation_complete',
+        'final_compilation_complete',
+        'resurrection_verdict',
       ],
       ...config,
     };
@@ -225,6 +228,21 @@ export class SSEServer {
     // Forward validation_complete events
     this.eventEmitter.onValidationComplete((event) => {
       this.broadcastEvent('validation_complete', event);
+    });
+
+    // Forward baseline_compilation_complete events
+    this.eventEmitter.onBaselineCompilationComplete((event) => {
+      this.broadcastEvent('baseline_compilation_complete', event);
+    });
+
+    // Forward final_compilation_complete events
+    this.eventEmitter.onFinalCompilationComplete((event) => {
+      this.broadcastEvent('final_compilation_complete', event);
+    });
+
+    // Forward resurrection_verdict events
+    this.eventEmitter.onResurrectionVerdict((event) => {
+      this.broadcastEvent('resurrection_verdict', event);
     });
   }
 

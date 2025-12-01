@@ -9,13 +9,14 @@ import { ComplexityChart } from './ComplexityChart';
 import { CoverageChart } from './CoverageChart';
 import { DependenciesChart } from './DependenciesChart';
 import { VulnerabilitiesChart } from './VulnerabilitiesChart';
+import { CompilationStatus } from './CompilationStatus';
 import './Dashboard.css';
 
 export function Dashboard() {
   const { state } = useResurrection();
-  const { currentMetrics, metricsHistory } = state;
+  const { currentMetrics, metricsHistory, baselineCompilation, finalCompilation, resurrectionVerdict } = state;
 
-  if (!currentMetrics) {
+  if (!currentMetrics && !baselineCompilation) {
     return (
       <div className="dashboard dashboard--empty">
         <div className="dashboard__empty-state">
@@ -36,60 +37,73 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Compilation Status Card */}
+      <CompilationStatus
+        baseline={baselineCompilation}
+        final={finalCompilation}
+        verdict={resurrectionVerdict}
+      />
+
       {/* Progress Bar */}
-      <div className="dashboard__section">
-        <ProgressBar progress={currentMetrics.progress} />
-      </div>
+      {currentMetrics && (
+        <div className="dashboard__section">
+          <ProgressBar progress={currentMetrics.progress} />
+        </div>
+      )}
 
       {/* Key Metrics Counters */}
-      <div className="dashboard__counters">
-        <Counter
-          label="Dependencies Updated"
-          value={currentMetrics.depsUpdated}
-          icon="📦"
-          color="primary"
-        />
-        <Counter
-          label="Vulnerabilities Fixed"
-          value={currentMetrics.vulnsFixed}
-          icon="🛡️"
-          color="success"
-        />
-        <Counter
-          label="Code Complexity"
-          value={Math.round(currentMetrics.complexity)}
-          icon="🧩"
-          color="warning"
-        />
-        <Counter
-          label="Test Coverage"
-          value={Math.round(currentMetrics.coverage * 100)}
-          icon="✅"
-          color="success"
-        />
-      </div>
+      {currentMetrics && (
+        <div className="dashboard__counters">
+          <Counter
+            label="Dependencies Updated"
+            value={currentMetrics.depsUpdated}
+            icon="📦"
+            color="primary"
+          />
+          <Counter
+            label="Vulnerabilities Fixed"
+            value={currentMetrics.vulnsFixed}
+            icon="🛡️"
+            color="success"
+          />
+          <Counter
+            label="Code Complexity"
+            value={Math.round(currentMetrics.complexity)}
+            icon="🧩"
+            color="warning"
+          />
+          <Counter
+            label="Test Coverage"
+            value={Math.round(currentMetrics.coverage * 100)}
+            icon="✅"
+            color="success"
+          />
+        </div>
+      )}
 
       {/* Additional Stats */}
-      <div className="dashboard__stats">
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Lines of Code</span>
-          <span className="dashboard__stat-value">
-            {currentMetrics.loc.toLocaleString()}
-          </span>
+      {currentMetrics && (
+        <div className="dashboard__stats">
+          <div className="dashboard__stat">
+            <span className="dashboard__stat-label">Lines of Code</span>
+            <span className="dashboard__stat-value">
+              {currentMetrics.loc.toLocaleString()}
+            </span>
+          </div>
+          <div className="dashboard__stat">
+            <span className="dashboard__stat-label">Metrics Updates</span>
+            <span className="dashboard__stat-value">
+              {metricsHistory.length}
+            </span>
+          </div>
+          <div className="dashboard__stat">
+            <span className="dashboard__stat-label">Last Update</span>
+            <span className="dashboard__stat-value">
+              {new Date(currentMetrics.timestamp).toLocaleTimeString()}
+            </span>
+          </div>
         </div>
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Metrics Updates</span>
-          <span className="dashboard__stat-value">
-            {metricsHistory.length}
-          </span>
-        </div>
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Last Update</span>
-          <span className="dashboard__stat-value">
-            {new Date(currentMetrics.timestamp).toLocaleTimeString()}
-          </span>
-        </div>
-      </div>
+      )}
 
       {/* Time-series Charts */}
       {metricsHistory.length > 1 ? (

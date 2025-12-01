@@ -6,6 +6,8 @@ import {
   ASTAnalysisResult,
   LLMInsight,
   ValidationResult,
+  CompilationResult,
+  ResurrectionVerdict,
 } from '../types';
 
 /**
@@ -33,6 +35,11 @@ export interface ResurrectionState {
   // Validation results
   validationResult: ValidationResult | null;
   
+  // Compilation status
+  baselineCompilation: CompilationResult | null;
+  finalCompilation: CompilationResult | null;
+  resurrectionVerdict: ResurrectionVerdict | null;
+  
   // Connection status
   isConnected: boolean;
   
@@ -52,6 +59,9 @@ export type ResurrectionAction =
   | { type: 'SET_AST_ANALYSIS'; payload: ASTAnalysisResult }
   | { type: 'ADD_LLM_INSIGHT'; payload: LLMInsight }
   | { type: 'SET_VALIDATION_RESULT'; payload: ValidationResult }
+  | { type: 'SET_BASELINE_COMPILATION'; payload: CompilationResult }
+  | { type: 'SET_FINAL_COMPILATION'; payload: CompilationResult }
+  | { type: 'SET_RESURRECTION_VERDICT'; payload: ResurrectionVerdict }
   | { type: 'RESET_STATE' };
 
 /**
@@ -65,6 +75,9 @@ const initialState: ResurrectionState = {
   astAnalysis: null,
   llmInsights: [],
   validationResult: null,
+  baselineCompilation: null,
+  finalCompilation: null,
+  resurrectionVerdict: null,
   isConnected: false,
   status: 'idle',
 };
@@ -125,6 +138,25 @@ function resurrectionReducer(
         ...state,
         validationResult: action.payload,
         status: 'complete',
+      };
+
+    case 'SET_BASELINE_COMPILATION':
+      return {
+        ...state,
+        baselineCompilation: action.payload,
+      };
+
+    case 'SET_FINAL_COMPILATION':
+      return {
+        ...state,
+        finalCompilation: action.payload,
+      };
+
+    case 'SET_RESURRECTION_VERDICT':
+      return {
+        ...state,
+        resurrectionVerdict: action.payload,
+        status: action.payload.resurrected ? 'complete' : state.status,
       };
 
     case 'RESET_STATE':

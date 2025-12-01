@@ -9,6 +9,7 @@ export { ComplexityChart } from './ComplexityChart';
 export { CoverageChart } from './CoverageChart';
 export { DependenciesChart } from './DependenciesChart';
 export { VulnerabilitiesChart } from './VulnerabilitiesChart';
+export { CompilationStatus } from './CompilationStatus';
 export { Narrator, useVoices } from './Narrator';
 export { GhostTour } from './GhostTour';
 export { Symphony } from './Symphony';

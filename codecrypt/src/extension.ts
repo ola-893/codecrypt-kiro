@@ -248,6 +248,19 @@ export function activate(context: vscode.ExtensionContext) {
 									logger.info(`Frontend can connect to: ${sseURL}`);
 								}
 
+								// Run baseline compilation check FIRST (before any modifications)
+								reporter.reportProgress('Running baseline compilation check');
+								const baselineResult = await orchestrator.runBaselineCompilationCheck();
+								if (baselineResult) {
+									logger.info(`Baseline compilation: ${baselineResult.success ? 'PASSED' : 'FAILED'} (${baselineResult.errorCount} errors)`);
+									if (!baselineResult.success) {
+										logger.info(`  Error breakdown: ${Object.entries(baselineResult.errorsByCategory)
+											.filter(([_, count]) => count > 0)
+											.map(([cat, count]) => `${cat}: ${count}`)
+											.join(', ')}`);
+									}
+								}
+
 								// Run hybrid analysis (works without dependencies)
 								reporter.reportProgress('Running hybrid analysis');
 								const hybridAnalysis = await orchestrator.runHybridAnalysis();
@@ -262,6 +275,19 @@ export function activate(context: vscode.ExtensionContext) {
 									await orchestrator.executeResurrectionPlan(dependencyReport);
 								}
 
+								// Run final compilation check and generate verdict
+								reporter.reportProgress('Running final compilation verification');
+								const verdict = await orchestrator.runFinalCompilationCheckAndVerdict();
+								if (verdict) {
+									if (verdict.resurrected) {
+										logger.info(`🎉 RESURRECTION SUCCESSFUL! Fixed ${verdict.errorsFixed} compilation errors`);
+									} else if (baselineResult?.success) {
+										logger.info('Repository was already compiling - no resurrection needed');
+									} else {
+										logger.info(`Resurrection incomplete: ${verdict.errorsRemaining} errors remain`);
+									}
+								}
+
 								// Run Time Machine validation
 								reporter.reportProgress('Running Time Machine validation');
 								const timeMachineResults = await orchestrator.runTimeMachineValidation();
@@ -271,7 +297,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 								// Generate final report
 								reporter.reportProgress('Generating final report');
-								const finalReport = await orchestrator.generateReport();
+								const report = await orchestrator.generateReport();
 								logger.info('Final report generated');
 
 								// Stop orchestrator

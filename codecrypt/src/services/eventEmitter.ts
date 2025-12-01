@@ -15,6 +15,9 @@ import {
   ASTAnalysisCompleteEventData,
   LLMInsightEventData,
   ValidationCompleteEventData,
+  BaselineCompilationCompleteEventData,
+  FinalCompilationCompleteEventData,
+  ResurrectionVerdictEventData,
 } from '../types';
 import { getLogger } from '../utils/logger';
 
@@ -83,6 +86,27 @@ export class ResurrectionEventEmitter extends EventEmitter {
    */
   emitValidationComplete(data: ValidationCompleteEventData): void {
     this.emitEvent('validation_complete', data);
+  }
+
+  /**
+   * Emit a baseline compilation complete event
+   */
+  emitBaselineCompilationComplete(data: BaselineCompilationCompleteEventData): void {
+    this.emitEvent('baseline_compilation_complete', data);
+  }
+
+  /**
+   * Emit a final compilation complete event
+   */
+  emitFinalCompilationComplete(data: FinalCompilationCompleteEventData): void {
+    this.emitEvent('final_compilation_complete', data);
+  }
+
+  /**
+   * Emit a resurrection verdict event
+   */
+  emitResurrectionVerdict(data: ResurrectionVerdictEventData): void {
+    this.emitEvent('resurrection_verdict', data);
   }
 
   /**
@@ -169,6 +193,33 @@ export class ResurrectionEventEmitter extends EventEmitter {
     listener: (event: ResurrectionEvent<ValidationCompleteEventData>) => void
   ): void {
     this.on('validation_complete', listener);
+  }
+
+  /**
+   * Subscribe to baseline compilation complete events
+   */
+  onBaselineCompilationComplete(
+    listener: (event: ResurrectionEvent<BaselineCompilationCompleteEventData>) => void
+  ): void {
+    this.on('baseline_compilation_complete', listener);
+  }
+
+  /**
+   * Subscribe to final compilation complete events
+   */
+  onFinalCompilationComplete(
+    listener: (event: ResurrectionEvent<FinalCompilationCompleteEventData>) => void
+  ): void {
+    this.on('final_compilation_complete', listener);
+  }
+
+  /**
+   * Subscribe to resurrection verdict events
+   */
+  onResurrectionVerdict(
+    listener: (event: ResurrectionEvent<ResurrectionVerdictEventData>) => void
+  ): void {
+    this.on('resurrection_verdict', listener);
   }
 
   /**

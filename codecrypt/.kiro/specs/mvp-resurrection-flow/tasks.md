@@ -698,28 +698,28 @@
     - Test fix suggestion display
     - _Requirements: FR-010_
 
-- [ ] 31. Add Frontend Events for Compilation Proof
-  - [ ] 31.1 Add new event types to event emitter
+- [x] 31. Add Frontend Events for Compilation Proof
+  - [x] 31.1 Add new event types to event emitter
     - Add `baseline_compilation_complete` event type
     - Add `final_compilation_complete` event type
     - Add `resurrection_verdict` event type
     - Update SSE server to forward new events
     - _Requirements: FR-001, FR-003_
   
-  - [ ] 31.2 Update Dashboard to show compilation status
+  - [x] 31.2 Update Dashboard to show compilation status
     - Add "Compilation Status" card to dashboard
     - Show baseline error count
     - Show current/final error count
     - Show resurrection progress indicator
     - _Requirements: FR-005_
   
-  - [ ] 31.3 Add narration for compilation events
+  - [x] 31.3 Add narration for compilation events
     - Narrate baseline compilation result
     - Narrate final compilation result
     - Narrate resurrection verdict with enthusiasm
     - _Requirements: FR-006_
 
-- [ ] 32. Final Checkpoint - Verify Compilation Proof Works
+- [x] 32. Final Checkpoint - Verify Compilation Proof Works
   - Ensure all tests pass, ask the user if questions arise.
   - Test with a real dead TypeScript repository
   - Verify baseline shows compilation errors

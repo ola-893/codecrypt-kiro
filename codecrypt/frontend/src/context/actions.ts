@@ -9,6 +9,8 @@ import {
   ASTAnalysisResult,
   LLMInsight,
   ValidationResult,
+  CompilationResult,
+  ResurrectionVerdict,
 } from '../types';
 
 /**
@@ -53,6 +55,21 @@ export const addLLMInsight = (insight: LLMInsight): ResurrectionAction => ({
 export const setValidationResult = (result: ValidationResult): ResurrectionAction => ({
   type: 'SET_VALIDATION_RESULT',
   payload: result,
+});
+
+export const setBaselineCompilation = (result: CompilationResult): ResurrectionAction => ({
+  type: 'SET_BASELINE_COMPILATION',
+  payload: result,
+});
+
+export const setFinalCompilation = (result: CompilationResult): ResurrectionAction => ({
+  type: 'SET_FINAL_COMPILATION',
+  payload: result,
+});
+
+export const setResurrectionVerdict = (verdict: ResurrectionVerdict): ResurrectionAction => ({
+  type: 'SET_RESURRECTION_VERDICT',
+  payload: verdict,
 });
 
 export const resetState = (): ResurrectionAction => ({

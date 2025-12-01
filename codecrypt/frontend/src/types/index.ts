@@ -52,17 +52,56 @@ export interface ValidationResult {
   performanceImprovement: number;
 }
 
+/**
+ * Error category for compilation errors
+ */
+export type ErrorCategory = 'type' | 'import' | 'syntax' | 'dependency' | 'config';
+
+/**
+ * Compilation result from backend
+ */
+export interface CompilationResult {
+  timestamp: number;
+  success: boolean;
+  errorCount: number;
+  errorsByCategory: Record<ErrorCategory, number>;
+  projectType: 'typescript' | 'javascript' | 'unknown';
+}
+
+/**
+ * Resurrection verdict comparing baseline and final compilation
+ */
+export interface ResurrectionVerdict {
+  resurrected: boolean;
+  errorsFixed: number;
+  errorsRemaining: number;
+  errorsFixedByCategory: Record<ErrorCategory, number>;
+  errorsRemainingByCategory: Record<ErrorCategory, number>;
+}
+
+/**
+ * Compilation status for dashboard display
+ */
+export interface CompilationStatus {
+  baseline: CompilationResult | null;
+  final: CompilationResult | null;
+  verdict: ResurrectionVerdict | null;
+}
+
 export type EventType = 
   | 'metric_updated'
   | 'transformation_applied'
   | 'narration'
   | 'ast_analysis_complete'
   | 'llm_insight'
-  | 'validation_complete';
+  | 'validation_complete'
+  | 'baseline_compilation_complete'
+  | 'final_compilation_complete'
+  | 'resurrection_verdict';
 
 export interface SSEEvent {
   type: EventType;
-  data: MetricsSnapshot | TransformationEvent | NarrationEvent | ASTAnalysisResult | LLMInsight | ValidationResult;
+  data: MetricsSnapshot | TransformationEvent | NarrationEvent | ASTAnalysisResult | LLMInsight | ValidationResult | CompilationResult | ResurrectionVerdict;
 }
 
 // Re-export ghost tour types

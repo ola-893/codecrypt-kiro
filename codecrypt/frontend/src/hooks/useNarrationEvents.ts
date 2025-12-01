@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { SSEEvent, NarrationEvent, TransformationEvent, ASTAnalysisResult, LLMInsight, ValidationResult } from '../types';
+import { SSEEvent, NarrationEvent, TransformationEvent, ASTAnalysisResult, LLMInsight, ValidationResult, CompilationResult, ResurrectionVerdict } from '../types';
 
 /**
  * Hook to filter and transform SSE events into narration events
@@ -45,6 +45,30 @@ export function useNarrationEvents(events: SSEEvent[]): NarrationEvent[] {
           const validation = event.data as ValidationResult;
           narrationEvents.push(
             generateValidationNarration(validation)
+          );
+          break;
+
+        case 'baseline_compilation_complete':
+          // Generate narration for baseline compilation
+          const baselineCompilation = event.data as CompilationResult;
+          narrationEvents.push(
+            generateBaselineCompilationNarration(baselineCompilation)
+          );
+          break;
+
+        case 'final_compilation_complete':
+          // Generate narration for final compilation
+          const finalCompilation = event.data as CompilationResult;
+          narrationEvents.push(
+            generateFinalCompilationNarration(finalCompilation)
+          );
+          break;
+
+        case 'resurrection_verdict':
+          // Generate narration for resurrection verdict
+          const verdict = event.data as ResurrectionVerdict;
+          narrationEvents.push(
+            generateResurrectionVerdictNarration(verdict)
           );
           break;
 
@@ -182,6 +206,83 @@ function generateValidationNarration(
 
   return {
     timestamp: validation.timestamp,
+    message,
+    priority,
+  };
+}
+
+/**
+ * Generate natural language narration for baseline compilation results
+ */
+function generateBaselineCompilationNarration(
+  compilation: CompilationResult
+): NarrationEvent {
+  let message = '';
+  let priority: 'low' | 'medium' | 'high' = 'high';
+
+  if (compilation.success) {
+    message = `Baseline compilation check complete. The code already compiles successfully! This project may not be as dead as we thought.`;
+    priority = 'medium';
+  } else {
+    const errorText = compilation.errorCount === 1 ? 'error' : 'errors';
+    message = `Baseline compilation check complete. Found ${compilation.errorCount} compilation ${errorText}. The resurrection process will attempt to fix these issues.`;
+    priority = 'high';
+  }
+
+  return {
+    timestamp: compilation.timestamp,
+    message,
+    priority,
+  };
+}
+
+/**
+ * Generate natural language narration for final compilation results
+ */
+function generateFinalCompilationNarration(
+  compilation: CompilationResult
+): NarrationEvent {
+  let message = '';
+  let priority: 'low' | 'medium' | 'high' = 'high';
+
+  if (compilation.success) {
+    message = `Final compilation check complete. The code now compiles successfully! The resurrection is looking promising.`;
+    priority = 'high';
+  } else {
+    const errorText = compilation.errorCount === 1 ? 'error' : 'errors';
+    message = `Final compilation check complete. ${compilation.errorCount} ${errorText} remain. Some issues could not be automatically resolved.`;
+    priority = 'high';
+  }
+
+  return {
+    timestamp: compilation.timestamp,
+    message,
+    priority,
+  };
+}
+
+/**
+ * Generate natural language narration for resurrection verdict
+ */
+function generateResurrectionVerdictNarration(
+  verdict: ResurrectionVerdict
+): NarrationEvent {
+  let message = '';
+  const priority: 'low' | 'medium' | 'high' = 'high';
+
+  if (verdict.resurrected) {
+    const fixedText = verdict.errorsFixed === 1 ? 'error' : 'errors';
+    message = `Resurrection complete! The code has risen from the grave! We fixed ${verdict.errorsFixed} compilation ${fixedText}. The project lives again!`;
+  } else if (verdict.errorsRemaining === 0 && verdict.errorsFixed === 0) {
+    message = `The code was already alive! No resurrection needed. This project was never truly dead.`;
+  } else {
+    const remainingText = verdict.errorsRemaining === 1 ? 'error remains' : 'errors remain';
+    const fixedText = verdict.errorsFixed === 1 ? 'error' : 'errors';
+    message = `Resurrection incomplete. We fixed ${verdict.errorsFixed} ${fixedText}, but ${verdict.errorsRemaining} ${remainingText}. The code still needs more work to fully rise.`;
+  }
+
+  return {
+    timestamp: Date.now(),
     message,
     priority,
   };

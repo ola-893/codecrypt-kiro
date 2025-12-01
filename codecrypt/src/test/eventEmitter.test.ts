@@ -18,6 +18,9 @@ import {
   ASTAnalysisCompleteEventData,
   LLMInsightEventData,
   ValidationCompleteEventData,
+  BaselineCompilationCompleteEventData,
+  FinalCompilationCompleteEventData,
+  ResurrectionVerdictEventData,
 } from '../types';
 
 suite('ResurrectionEventEmitter Test Suite', () => {
@@ -205,6 +208,156 @@ suite('ResurrectionEventEmitter Test Suite', () => {
       });
 
       emitter.emitValidationComplete(data);
+    });
+
+    test('should emit baseline_compilation_complete events', (done) => {
+      const data: BaselineCompilationCompleteEventData = {
+        result: {
+          timestamp: new Date(),
+          success: false,
+          errorCount: 5,
+          errors: [
+            {
+              file: 'src/index.ts',
+              line: 10,
+              column: 5,
+              message: "Cannot find module 'lodash'",
+              code: 'TS2307',
+              category: 'import',
+            },
+          ],
+          errorsByCategory: {
+            type: 2,
+            import: 2,
+            syntax: 0,
+            dependency: 1,
+            config: 0,
+          },
+          output: 'tsc output...',
+          projectType: 'typescript',
+          strategy: 'typescript',
+          suggestedFixes: [],
+        },
+        summary: 'Baseline compilation failed with 5 errors',
+      };
+
+      emitter.onBaselineCompilationComplete((event) => {
+        assert.strictEqual(event.type, 'baseline_compilation_complete');
+        assert.strictEqual(event.data.summary, data.summary);
+        assert.strictEqual(event.data.result.success, false);
+        assert.strictEqual(event.data.result.errorCount, 5);
+        done();
+      });
+
+      emitter.emitBaselineCompilationComplete(data);
+    });
+
+    test('should emit final_compilation_complete events', (done) => {
+      const data: FinalCompilationCompleteEventData = {
+        result: {
+          timestamp: new Date(),
+          success: true,
+          errorCount: 0,
+          errors: [],
+          errorsByCategory: {
+            type: 0,
+            import: 0,
+            syntax: 0,
+            dependency: 0,
+            config: 0,
+          },
+          output: 'Compilation successful',
+          projectType: 'typescript',
+          strategy: 'typescript',
+          suggestedFixes: [],
+        },
+        summary: 'Final compilation succeeded',
+      };
+
+      emitter.onFinalCompilationComplete((event) => {
+        assert.strictEqual(event.type, 'final_compilation_complete');
+        assert.strictEqual(event.data.summary, data.summary);
+        assert.strictEqual(event.data.result.success, true);
+        assert.strictEqual(event.data.result.errorCount, 0);
+        done();
+      });
+
+      emitter.emitFinalCompilationComplete(data);
+    });
+
+    test('should emit resurrection_verdict events', (done) => {
+      const baselineResult = {
+        timestamp: new Date(),
+        success: false,
+        errorCount: 5,
+        errors: [],
+        errorsByCategory: {
+          type: 2,
+          import: 2,
+          syntax: 0,
+          dependency: 1,
+          config: 0,
+        },
+        output: '',
+        projectType: 'typescript' as const,
+        strategy: 'typescript' as const,
+        suggestedFixes: [],
+      };
+
+      const finalResult = {
+        timestamp: new Date(),
+        success: true,
+        errorCount: 0,
+        errors: [],
+        errorsByCategory: {
+          type: 0,
+          import: 0,
+          syntax: 0,
+          dependency: 0,
+          config: 0,
+        },
+        output: '',
+        projectType: 'typescript' as const,
+        strategy: 'typescript' as const,
+        suggestedFixes: [],
+      };
+
+      const data: ResurrectionVerdictEventData = {
+        verdict: {
+          baselineCompilation: baselineResult,
+          finalCompilation: finalResult,
+          resurrected: true,
+          errorsFixed: 5,
+          errorsRemaining: 0,
+          errorsFixedByCategory: {
+            type: 2,
+            import: 2,
+            syntax: 0,
+            dependency: 1,
+            config: 0,
+          },
+          errorsRemainingByCategory: {
+            type: 0,
+            import: 0,
+            syntax: 0,
+            dependency: 0,
+            config: 0,
+          },
+          fixedErrors: [],
+          newErrors: [],
+        },
+        summary: 'RESURRECTED! Fixed 5 compilation errors',
+      };
+
+      emitter.onResurrectionVerdict((event) => {
+        assert.strictEqual(event.type, 'resurrection_verdict');
+        assert.strictEqual(event.data.summary, data.summary);
+        assert.strictEqual(event.data.verdict.resurrected, true);
+        assert.strictEqual(event.data.verdict.errorsFixed, 5);
+        done();
+      });
+
+      emitter.emitResurrectionVerdict(data);
     });
   });
 
