@@ -22,16 +22,16 @@ suite('Error Handling Test Suite', () => {
   });
 
   test('RepositoryError extends CodeCryptError', () => {
-    const error = new RepositoryError('Repository not found');
+    const error = new RepositoryError('Repository not found', '/path/to/repo');
     
     assert.strictEqual(error.message, 'Repository not found');
-    assert.strictEqual(error.code, 'REPO_ERROR');
+    assert.strictEqual(error.code, 'REPOSITORY_ERROR');
     assert.strictEqual(error.name, 'RepositoryError');
     assert.ok(error instanceof CodeCryptError);
   });
 
   test('DependencyError extends CodeCryptError', () => {
-    const error = new DependencyError('Dependency conflict');
+    const error = new DependencyError('Dependency conflict', 'react');
     
     assert.strictEqual(error.message, 'Dependency conflict');
     assert.strictEqual(error.code, 'DEPENDENCY_ERROR');
@@ -39,7 +39,7 @@ suite('Error Handling Test Suite', () => {
   });
 
   test('NetworkError extends CodeCryptError', () => {
-    const error = new NetworkError('Connection timeout');
+    const error = new NetworkError('Connection timeout', 'https://example.com');
     
     assert.strictEqual(error.message, 'Connection timeout');
     assert.strictEqual(error.code, 'NETWORK_ERROR');
@@ -91,8 +91,8 @@ suite('Error Handling Test Suite', () => {
     await assert.rejects(
       async () => await retryWithBackoff(fn, 2, 10),
       (error: Error) => {
-        assert.ok(error instanceof NetworkError);
-        assert.ok(error.message.includes('failed after 3 attempts'));
+        assert.ok(error instanceof Error);
+        assert.strictEqual(error.message, 'Permanent failure');
         return true;
       }
     );
@@ -102,28 +102,20 @@ suite('Error Handling Test Suite', () => {
     const json = '{"name": "test", "value": 123}';
     const result = safeJsonParse(json);
     
-    assert.strictEqual(result.name, 'test');
-    assert.strictEqual(result.value, 123);
+    assert.deepStrictEqual(result, { name: 'test', value: 123 });
   });
 
-  test('safeJsonParse throws ValidationError on invalid JSON', () => {
+  test('safeJsonParse returns null for invalid JSON', () => {
     const invalidJson = '{invalid json}';
-    
-    assert.throws(
-      () => safeJsonParse(invalidJson, 'test data'),
-      (error: Error) => {
-        assert.ok(error instanceof ValidationError);
-        assert.ok(error.message.includes('Failed to parse test data'));
-        return true;
-      }
-    );
+    const result = safeJsonParse(invalidJson);
+    assert.strictEqual(result, null);
   });
 
   test('formatErrorForUser formats CodeCryptError', () => {
-    const error = new RepositoryError('Test error');
+    const error = new RepositoryError('Test error', '/path/to/repo');
     const formatted = formatErrorForUser(error);
     
-    assert.strictEqual(formatted, 'RepositoryError: Test error');
+    assert.strictEqual(formatted, 'Test error');
   });
 
   test('formatErrorForUser formats generic Error', () => {

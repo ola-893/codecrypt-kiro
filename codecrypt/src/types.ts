@@ -1135,3 +1135,135 @@ export const ERROR_CATEGORY_PRIORITIES: Record<PostResurrectionErrorCategory, nu
   type_error: 30,
   unknown: 10
 };
+
+// ============================================================================
+// Smart Dependency Updates Types
+// ============================================================================
+
+/**
+ * Package replacement mapping from deprecated to modern package
+ */
+export interface PackageReplacement {
+  /** Original deprecated package name */
+  oldName: string;
+  /** Modern replacement package name */
+  newName: string;
+  /** Version mapping from original to replacement versions */
+  versionMapping: Record<string, string>;
+  /** Whether this replacement requires code changes */
+  requiresCodeChanges: boolean;
+  /** Description of required code changes */
+  codeChangeDescription?: string;
+  /** Import path mappings (old import → new import) */
+  importMappings?: Record<string, string>;
+}
+
+/**
+ * Architecture incompatibility entry
+ */
+export interface ArchitectureIncompatibleEntry {
+  /** Package name */
+  packageName: string;
+  /** List of incompatible architectures (e.g., 'arm64', 'arm') */
+  incompatibleArchitectures: string[];
+  /** Replacement package if available */
+  replacement?: string;
+  /** Reason for incompatibility */
+  reason: string;
+}
+
+/**
+ * Complete replacement registry schema
+ */
+export interface ReplacementRegistrySchema {
+  /** Schema version */
+  version: string;
+  /** Last update timestamp */
+  lastUpdated: string;
+  /** List of package replacements */
+  replacements: PackageReplacement[];
+  /** List of architecture-incompatible packages */
+  architectureIncompatible: ArchitectureIncompatibleEntry[];
+  /** List of known dead URLs */
+  knownDeadUrls: string[];
+}
+
+/**
+ * Interface for the PackageReplacementRegistry component
+ */
+export interface IPackageReplacementRegistry {
+  /** Load registry from file */
+  load(): Promise<void>;
+  /** Save registry to file */
+  save(): Promise<void>;
+  /** Look up replacement for a package */
+  lookup(packageName: string): PackageReplacement | null;
+  /** Add a new replacement to the registry */
+  add(replacement: PackageReplacement): void;
+  /** Get all replacements */
+  getAll(): PackageReplacement[];
+}
+
+/**
+ * Reason why a dependency is blocking
+ */
+export type BlockingReason =
+  | 'architecture_incompatible'  // e.g., node-sass on ARM64
+  | 'dead_url'                   // GitHub archive URL 404
+  | 'deprecated_no_replacement'  // Package deprecated with no alternative
+  | 'build_failure'              // Known build issues
+  | 'peer_conflict';             // Unresolvable peer dependencies
+
+/**
+ * A dependency that blocks npm install from completing
+ */
+export interface BlockingDependency {
+  /** Package name */
+  name: string;
+  /** Package version */
+  version: string;
+  /** Reason why this dependency is blocking */
+  reason: BlockingReason;
+  /** Replacement package if available */
+  replacement?: PackageReplacement;
+}
+
+/**
+ * Interface for the BlockingDependencyDetector component
+ */
+export interface IBlockingDependencyDetector {
+  /** Detect all blocking dependencies in a dependency map */
+  detect(dependencies: Map<string, string>): Promise<BlockingDependency[]>;
+  /** Check if a package is known to be blocking */
+  isKnownBlocking(packageName: string): boolean;
+  /** Get the blocking reason for a package */
+  getBlockingReason(packageName: string): BlockingReason | null;
+}
+
+/**
+ * Result of URL validation
+ */
+export interface URLValidationResult {
+  /** The URL that was validated */
+  url: string;
+  /** Whether the URL is valid and accessible */
+  isValid: boolean;
+  /** HTTP status code if available */
+  statusCode?: number;
+  /** Alternative npm registry version if URL is dead */
+  alternativeVersion?: string;
+  /** Any error message if validation failed */
+  error?: string;
+}
+
+/**
+ * Interface for the URLValidator component
+ */
+export interface IURLValidator {
+  /** Validate a URL-based package version */
+  validate(url: string): Promise<URLValidationResult>;
+  /** Find npm registry alternative for a package */
+  findNpmAlternative(packageName: string): Promise<string | null>;
+  /** Extract package name from a GitHub archive URL */
+  extractPackageFromUrl(url: string): string | null;
+}

@@ -275,6 +275,19 @@ export function activate(context: vscode.ExtensionContext) {
 									await orchestrator.executeResurrectionPlan(dependencyReport);
 								}
 
+								// Run post-resurrection validation to fix any remaining compilation errors
+								// This handles peer dependency conflicts, missing modules, etc.
+								reporter.reportProgress('Running post-resurrection validation');
+								const postValidationResult = await orchestrator.runPostResurrectionValidation();
+								if (postValidationResult) {
+									if (postValidationResult.success) {
+										logger.info(`Post-resurrection validation passed after ${postValidationResult.iterations} iteration(s)`);
+										logger.info(`Applied ${postValidationResult.appliedFixes.length} fix(es)`);
+									} else {
+										logger.warn(`Post-resurrection validation incomplete: ${postValidationResult.remainingErrors.length} errors remain`);
+									}
+								}
+
 								// Run final compilation check and generate verdict
 								reporter.reportProgress('Running final compilation verification');
 								const verdict = await orchestrator.runFinalCompilationCheckAndVerdict();

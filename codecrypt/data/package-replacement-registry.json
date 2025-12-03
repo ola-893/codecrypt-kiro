@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2024-12-02T00:00:00.000Z",
+  "replacements": [
+    {
+      "originalPackage": "node-sass",
+      "replacementPackage": "sass",
+      "versionMapping": {
+        "*": "^1.69.0"
+      },
+      "requiresCodeChanges": false
+    },
+    {
+      "originalPackage": "request",
+      "replacementPackage": "node-fetch",
+      "versionMapping": {
+        "*": "^3.3.0"
+      },
+      "requiresCodeChanges": true,
+      "codeChangeDescription": "Replace request() calls with fetch() API"
+    }
+  ],
+  "architectureIncompatible": [
+    {
+      "packageName": "node-sass",
+      "incompatibleArchitectures": ["arm64"],
+      "replacement": "sass",
+      "reason": "node-sass uses native bindings that don't support ARM64"
+    },
+    {
+      "packageName": "phantomjs",
+      "incompatibleArchitectures": ["arm64"],
+      "replacement": "puppeteer",
+      "reason": "PhantomJS is deprecated and has no ARM64 binaries"
+    }
+  ],
+  "knownDeadUrls": [
+    "github.com/substack/querystring"
+  ]
+}

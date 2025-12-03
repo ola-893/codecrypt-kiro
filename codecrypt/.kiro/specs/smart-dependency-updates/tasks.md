@@ -1,0 +1,203 @@
+# Implementation Plan
+
+- [x] 1. Create Package Replacement Registry
+  - [x] 1.1 Create PackageReplacementRegistry interface and types
+    - Define PackageReplacement, ArchitectureIncompatibleEntry, and ReplacementRegistrySchema interfaces
+    - Create the registry class with load, save, lookup, add, and getAll methods
+    - _Requirements: 3.1, 8.1, 8.2_
+  - [x] 1.2 Write property test for registry serialization round-trip
+    - **Property 13: Registry serialization round-trip**
+    - **Validates: Requirements 8.3, 8.4**
+  - [x] 1.3 Write property test for registry entry completeness
+    - **Property 14: Registry entry completeness**
+    - **Validates: Requirements 8.3**
+  - [x] 1.4 Create default replacement registry JSON file
+    - Include node-sass → sass mapping
+    - Include request → node-fetch mapping
+    - Include architecture incompatibility list for ARM64
+    - Include known dead URLs list
+    - _Requirements: 3.1, 4.5_
+  - [x] 1.5 Write unit tests for registry loading and fallback
+    - Test loading from valid JSON file
+    - Test fallback to default when file missing
+    - Test validation of JSON structure
+    - _Requirements: 8.1, 8.5_
+
+- [x] 2. Implement Blocking Dependency Detector
+  - [x] 2.1 Create BlockingDependencyDetector interface and implementation
+    - Define BlockingDependency and BlockingReason types
+    - Implement detect method to scan dependencies against known blocking list
+    - Implement isKnownBlocking and getBlockingReason helper methods
+    - _Requirements: 1.1, 4.1_
+  - [x] 2.2 Write property test for blocking detection completeness
+    - **Property 1: Blocking dependency detection completeness**
+    - **Validates: Requirements 1.1, 4.1**
+  - [x] 2.3 Write property test for architecture check completeness
+    - **Property 8: Architecture check completeness**
+    - **Validates: Requirements 4.1**
+  - [x] 2.4 Integrate with PackageReplacementRegistry for replacement lookup
+    - When blocking dependency detected, check registry for replacement
+    - Return replacement info with blocking dependency result
+    - _Requirements: 1.2, 4.2_
+  - [x] 2.5 Write property test for replacement lookup consistency
+    - **Property 2: Replacement lookup consistency**
+    - **Validates: Requirements 1.2, 3.2, 4.2**
+
+- [x] 3. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Implement URL Validator
+  - [x] 4.1 Create URLValidator interface and implementation
+    - Implement validate method with HEAD request
+    - Implement findNpmAlternative to query npm registry
+    - Implement extractPackageFromUrl to parse GitHub archive URLs
+    - _Requirements: 5.1, 5.3_
+  - [x] 4.2 Write unit tests for URL validation
+    - Test GitHub archive URL detection
+    - Test package name extraction from URLs
+    - Test npm registry fallback lookup
+    - _Requirements: 5.1, 5.2, 5.3, 5.4_
+  - [x] 4.3 Implement dead URL handling
+    - Mark dependencies with dead URLs
+    - Attempt npm registry resolution
+    - Remove unresolvable dependencies with warning
+    - _Requirements: 1.4, 1.5, 5.2, 5.5_
+
+- [-] 5. Implement Batch Planner
+  - [x] 5.1 Create BatchPlanner interface and implementation
+    - Define UpdateBatch type with id, packages, priority, and risk
+    - Implement createBatches to group compatible updates
+    - Implement estimateBatchRisk based on update types
+    - _Requirements: 2.1_
+  - [x] 5.2 Write property test for replacement priority ordering
+    - **Property 3: Replacement priority ordering**
+    - **Validates: Requirements 1.3**
+  - [x] 5.3 Implement batch grouping heuristics
+    - Security updates in separate high-priority batch
+    - Major version updates in separate batches
+    - Minor/patch updates grouped together (max 10 per batch)
+    - _Requirements: 2.1_
+  - [ ] 5.4 Write unit tests for batch planning
+    - Test security updates get separate batch
+    - Test batch size limits
+    - Test priority ordering
+    - _Requirements: 2.1_
+
+- [ ] 6. Implement Batch Executor
+  - [ ] 6.1 Create BatchExecutor interface and implementation
+    - Implement applyBatchToPackageJson to modify all entries at once
+    - Implement execute method for batch installation
+    - Implement executeWithFallback for retry logic
+    - _Requirements: 2.2, 2.3_
+  - [ ] 6.2 Write property test for batch modification atomicity
+    - **Property 4: Batch modification atomicity**
+    - **Validates: Requirements 2.2**
+  - [ ] 6.3 Write property test for progress event completeness
+    - **Property 5: Progress event completeness**
+    - **Validates: Requirements 2.5**
+  - [ ] 6.4 Implement npm install retry strategy
+    - First attempt: npm install
+    - Second attempt: npm install --legacy-peer-deps
+    - Third attempt: npm install --force
+    - Record flags used in result
+    - _Requirements: 7.2, 7.3_
+  - [ ] 6.5 Write property test for fallback flag warning
+    - **Property 12: Fallback flag warning**
+    - **Validates: Requirements 7.4**
+  - [ ] 6.6 Implement individual fallback on batch failure
+    - Restore package.json from git on batch failure
+    - Attempt individual updates for each package
+    - Skip packages that caused batch failure
+    - _Requirements: 2.3, 2.4_
+
+- [ ] 7. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 8. Implement npm Error Parser
+  - [ ] 8.1 Create npm error parsing utilities
+    - Define NpmInstallError type with categorized error types
+    - Implement parseNpmError to categorize stderr output
+    - Extract conflicting package names from peer dependency errors
+    - _Requirements: 7.1_
+  - [ ] 8.2 Write property test for peer conflict error parsing
+    - **Property 11: Peer conflict error parsing**
+    - **Validates: Requirements 7.1**
+  - [ ] 8.3 Write property test for failure categorization completeness
+    - **Property 10: Failure categorization completeness**
+    - **Validates: Requirements 6.1**
+  - [ ] 8.4 Write unit tests for error parsing
+    - Test peer dependency error parsing
+    - Test network error detection
+    - Test build failure detection
+    - _Requirements: 7.1, 7.5_
+
+- [ ] 9. Implement Package Replacement Executor
+  - [ ] 9.1 Create replacement execution logic
+    - Update package name in package.json
+    - Update version using versionMapping
+    - Flag files for manual review if requiresCodeChanges is true
+    - _Requirements: 3.3, 3.5_
+  - [ ] 9.2 Write property test for package replacement correctness
+    - **Property 6: Package replacement correctness**
+    - **Validates: Requirements 3.3**
+  - [ ] 9.3 Write property test for replacement logging completeness
+    - **Property 7: Replacement logging completeness**
+    - **Validates: Requirements 3.4**
+  - [ ] 9.4 Write unit tests for replacement execution
+    - Test package name replacement in dependencies
+    - Test package name replacement in devDependencies
+    - Test version mapping application
+    - _Requirements: 3.3, 3.4_
+
+- [ ] 10. Implement Smart Dependency Updater Orchestrator
+  - [ ] 10.1 Create SmartDependencyUpdater class
+    - Implement analyze method to run all pre-checks
+    - Implement execute method to orchestrate batch updates
+    - Track successful, failed, and manual intervention items
+    - _Requirements: 1.1, 2.1, 6.4_
+  - [ ] 10.2 Integrate all components
+    - Wire BlockingDependencyDetector
+    - Wire URLValidator
+    - Wire BatchPlanner and BatchExecutor
+    - Wire PackageReplacementRegistry
+    - _Requirements: 1.1, 1.2, 2.1, 5.1_
+  - [ ] 10.3 Write integration tests for smart updater
+    - Test end-to-end flow with blocking dependencies
+    - Test batch execution with mixed results
+    - Test fallback behavior
+    - _Requirements: 1.1, 2.1, 2.3_
+
+- [ ] 11. Implement Report Generator
+  - [ ] 11.1 Create enhanced report generation
+    - Add manual intervention section to reports
+    - Include failure categorization in report
+    - Include replacement notes with code change requirements
+    - _Requirements: 6.2, 6.3, 6.5_
+  - [ ] 11.2 Write property test for report structure completeness
+    - **Property 9: Report structure completeness**
+    - **Validates: Requirements 6.2, 6.4**
+  - [ ] 11.3 Write unit tests for report generation
+    - Test manual intervention section content
+    - Test failure categorization display
+    - Test replacement notes inclusion
+    - _Requirements: 6.2, 6.3, 6.4, 6.5_
+
+- [ ] 12. Integrate with Resurrection Orchestrator
+  - [ ] 12.1 Update ResurrectionOrchestrator to use SmartDependencyUpdater
+    - Replace current one-at-a-time update logic
+    - Use batch execution for dependency updates
+    - Emit appropriate progress events
+    - _Requirements: 2.1, 2.5_
+  - [ ] 12.2 Update progress reporting for batch updates
+    - Show batch progress instead of individual package progress
+    - Report batch success/failure status
+    - Include manual intervention items in final report
+    - _Requirements: 2.5, 6.4_
+  - [ ] 12.3 Write integration tests for orchestrator integration
+    - Test resurrection flow with smart updates
+    - Test progress event emission
+    - Test report generation
+    - _Requirements: 2.1, 2.5, 6.4_
+
+- [ ] 13. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

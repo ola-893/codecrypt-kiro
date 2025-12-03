@@ -157,7 +157,8 @@ suite('Dependency Analysis Service', () => {
   });
 
   suite('analyzeDependency', () => {
-    test('should identify outdated dependency', async () => {
+    test('should identify outdated dependency', async function() {
+      this.timeout(10000); // Network call may take time
       // Test with a real package that's likely to have updates
       const result = await analyzeDependency('express', '3.0.0');
       
@@ -179,7 +180,8 @@ suite('Dependency Analysis Service', () => {
   });
 
   suite('analyzeAllDependencies', () => {
-    test('should analyze multiple dependencies', async () => {
+    test('should analyze multiple dependencies', async function() {
+      this.timeout(30000); // Network calls may take time
       const dependencies = new Map([
         ['lodash', '4.17.0'],
         ['express', '4.0.0']
@@ -276,7 +278,8 @@ suite('Dependency Analysis Service', () => {
   });
 
   suite('analyzeDependencies (integration)', () => {
-    test('should perform complete analysis on repository', async () => {
+    test('should perform complete analysis on repository', async function() {
+      this.timeout(30000); // Network calls may take time
       const packageJson = {
         name: 'test-project',
         version: '1.0.0',

@@ -15,7 +15,13 @@ import {
   ResurrectionVerdict,
   ErrorCategory,
   CategorizedError,
-  FixSuggestion
+  FixSuggestion,
+  PostResurrectionValidationResult,
+  AppliedFix,
+  AnalyzedError,
+  FixHistory,
+  FixStrategy,
+  PostResurrectionErrorCategory
 } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
@@ -53,6 +59,8 @@ export interface ResurrectionReport {
   symphonyPath?: string;
   /** Path to dashboard screenshots */
   dashboardScreenshots?: string[];
+  /** Post-resurrection validation summary */
+  validationSummary?: ValidationSummary;
   /** Markdown formatted report */
   markdown: string;
 }
@@ -102,6 +110,79 @@ export interface ResurrectionStatistics {
 }
 
 /**
+ * Summary of post-resurrection validation results
+ * Includes iteration count, applied fixes, remaining errors, and fix history
+ * 
+ * _Requirements: 6.4_
+ */
+export interface ValidationSummary {
+  /** Whether validation succeeded */
+  success: boolean;
+  /** Number of iterations performed */
+  iterationCount: number;
+  /** Maximum iterations allowed */
+  maxIterations: number;
+  /** Total duration in milliseconds */
+  duration: number;
+  /** List of fixes that were applied during validation */
+  appliedFixes: AppliedFixSummary[];
+  /** Errors that remain unresolved after validation */
+  remainingErrors: ErrorSummary[];
+  /** Fix history for the repository */
+  fixHistory?: FixHistorySummary;
+}
+
+/**
+ * Summary of an applied fix for reporting
+ */
+export interface AppliedFixSummary {
+  /** Iteration number when fix was applied */
+  iteration: number;
+  /** Error category that triggered the fix */
+  errorCategory: PostResurrectionErrorCategory;
+  /** Package name if applicable */
+  packageName?: string;
+  /** Description of the fix strategy */
+  strategyDescription: string;
+  /** Whether the fix was successful */
+  success: boolean;
+  /** Error message if fix failed */
+  error?: string;
+}
+
+/**
+ * Summary of an error for reporting
+ */
+export interface ErrorSummary {
+  /** Error category */
+  category: PostResurrectionErrorCategory;
+  /** Error message */
+  message: string;
+  /** Package name if applicable */
+  packageName?: string;
+  /** Priority score */
+  priority: number;
+}
+
+/**
+ * Summary of fix history for reporting
+ */
+export interface FixHistorySummary {
+  /** Repository identifier */
+  repoId: string;
+  /** Number of historical fixes recorded */
+  totalFixes: number;
+  /** Most successful fix strategies */
+  topStrategies: {
+    errorPattern: string;
+    strategyType: string;
+    successCount: number;
+  }[];
+  /** Last resurrection timestamp */
+  lastResurrection?: Date;
+}
+
+/**
  * Options for generating a resurrection report
  */
 export interface ReportGenerationOptions {
@@ -121,6 +202,10 @@ export interface ReportGenerationOptions {
   symphonyPath?: string;
   /** Paths to dashboard screenshots */
   dashboardScreenshots?: string[];
+  /** Post-resurrection validation results */
+  validationResult?: PostResurrectionValidationResult;
+  /** Fix history for the repository */
+  fixHistory?: FixHistory;
 }
 
 /**
@@ -158,6 +243,11 @@ export function generateResurrectionReport(
     ? { before: options.metricsBefore, after: options.metricsAfter }
     : undefined;
   
+  // Generate validation summary if validation result is available
+  const validationSummary = options.validationResult
+    ? createValidationSummary(options.validationResult, options.fixHistory)
+    : undefined;
+  
   // Generate markdown report
   const markdown = formatMarkdownReport({
     summary,
@@ -172,7 +262,8 @@ export function generateResurrectionReport(
     resurrectionVerdict: options.resurrectionVerdict,
     ghostTourPath: options.ghostTourPath,
     symphonyPath: options.symphonyPath,
-    dashboardScreenshots: options.dashboardScreenshots
+    dashboardScreenshots: options.dashboardScreenshots,
+    validationSummary
   });
   
   logger.info('Resurrection report generated');
@@ -190,6 +281,12 @@ export function generateResurrectionReport(
     logger.info(`  Time Machine validation: ${options.timeMachineResults.success ? 'PASSED' : 'FAILED'}`);
   }
   
+  if (options.validationResult) {
+    logger.info(`  Post-resurrection validation: ${options.validationResult.success ? 'PASSED' : 'FAILED'}`);
+    logger.info(`  Validation iterations: ${options.validationResult.iterations}`);
+    logger.info(`  Fixes applied: ${options.validationResult.appliedFixes.length}`);
+  }
+  
   return {
     summary,
     updatedDependencies,
@@ -203,6 +300,7 @@ export function generateResurrectionReport(
     ghostTourPath: options.ghostTourPath,
     symphonyPath: options.symphonyPath,
     dashboardScreenshots: options.dashboardScreenshots,
+    validationSummary,
     markdown
   };
 }
@@ -319,6 +417,98 @@ function generateBranchUrl(repoUrl: string, branchName: string): string {
 }
 
 /**
+ * Create a validation summary from post-resurrection validation results
+ * 
+ * _Requirements: 6.4_
+ * 
+ * @param validationResult The post-resurrection validation result
+ * @param fixHistory Optional fix history for the repository
+ * @returns ValidationSummary for reporting
+ */
+function createValidationSummary(
+  validationResult: PostResurrectionValidationResult,
+  fixHistory?: FixHistory
+): ValidationSummary {
+  // Convert applied fixes to summary format
+  const appliedFixes: AppliedFixSummary[] = validationResult.appliedFixes.map(fix => ({
+    iteration: fix.iteration,
+    errorCategory: fix.error.category,
+    packageName: fix.error.packageName,
+    strategyDescription: describeFixStrategy(fix.strategy),
+    success: fix.result.success,
+    error: fix.result.error
+  }));
+
+  // Convert remaining errors to summary format
+  const remainingErrors: ErrorSummary[] = validationResult.remainingErrors.map(error => ({
+    category: error.category,
+    message: error.message,
+    packageName: error.packageName,
+    priority: error.priority
+  }));
+
+  // Create fix history summary if available
+  let fixHistorySummary: FixHistorySummary | undefined;
+  if (fixHistory) {
+    // Get top strategies by success count
+    const topStrategies = [...fixHistory.fixes]
+      .sort((a, b) => b.successCount - a.successCount)
+      .slice(0, 5)
+      .map(fix => ({
+        errorPattern: fix.errorPattern,
+        strategyType: fix.strategy.type,
+        successCount: fix.successCount
+      }));
+
+    fixHistorySummary = {
+      repoId: fixHistory.repoId,
+      totalFixes: fixHistory.fixes.length,
+      topStrategies,
+      lastResurrection: fixHistory.lastResurrection
+    };
+  }
+
+  return {
+    success: validationResult.success,
+    iterationCount: validationResult.iterations,
+    maxIterations: 10, // Default max iterations
+    duration: validationResult.duration,
+    appliedFixes,
+    remainingErrors,
+    fixHistory: fixHistorySummary
+  };
+}
+
+/**
+ * Generate human-readable description of a fix strategy
+ * 
+ * @param strategy The fix strategy to describe
+ * @returns Human-readable description
+ */
+function describeFixStrategy(strategy: FixStrategy): string {
+  switch (strategy.type) {
+    case 'adjust_version':
+      return `Adjusted ${strategy.package} to version ${strategy.newVersion}`;
+    case 'legacy_peer_deps':
+      return 'Enabled legacy peer deps mode';
+    case 'remove_lockfile':
+      return `Removed lockfile: ${strategy.lockfile}`;
+    case 'substitute_package':
+      return strategy.replacement
+        ? `Substituted ${strategy.original} with ${strategy.replacement}`
+        : `Removed ${strategy.original}`;
+    case 'remove_package':
+      return `Removed package: ${strategy.package}`;
+    case 'add_resolution':
+      return `Added resolution for ${strategy.package}@${strategy.version}`;
+    case 'force_install':
+      return 'Enabled force install mode';
+    default:
+      return 'Applied fix';
+  }
+}
+
+/**
  * Format the complete markdown report
  */
 function formatMarkdownReport(data: {
@@ -335,6 +525,7 @@ function formatMarkdownReport(data: {
   ghostTourPath?: string;
   symphonyPath?: string;
   dashboardScreenshots?: string[];
+  validationSummary?: ValidationSummary;
 }): string {
   const lines: string[] = [];
   
@@ -503,6 +694,104 @@ function formatMarkdownReport(data: {
     lines.push(`  - High: ${data.statistics.highVulnerabilitiesFixed}`);
   }
   lines.push('');
+  
+  // Post-Resurrection Validation Summary
+  // _Requirements: 6.4_
+  if (data.validationSummary) {
+    lines.push('## 🔧 Post-Resurrection Validation');
+    lines.push('');
+    
+    const vs = data.validationSummary;
+    const statusIcon = vs.success ? '✅' : '❌';
+    const statusText = vs.success ? 'PASSED' : 'FAILED';
+    
+    lines.push(`**Status:** ${statusIcon} ${statusText}`);
+    lines.push(`**Iterations:** ${vs.iterationCount}/${vs.maxIterations}`);
+    lines.push(`**Duration:** ${(vs.duration / 1000).toFixed(2)}s`);
+    lines.push('');
+    
+    // Applied Fixes
+    if (vs.appliedFixes.length > 0) {
+      lines.push('### Applied Fixes');
+      lines.push('');
+      lines.push('| Iteration | Error Category | Package | Strategy | Result |');
+      lines.push('|-----------|----------------|---------|----------|--------|');
+      
+      for (const fix of vs.appliedFixes) {
+        const resultIcon = fix.success ? '✅' : '❌';
+        const packageName = fix.packageName || '-';
+        const categoryLabel = fix.errorCategory.replace(/_/g, ' ');
+        lines.push(`| ${fix.iteration} | ${categoryLabel} | ${packageName} | ${fix.strategyDescription} | ${resultIcon} |`);
+      }
+      lines.push('');
+      
+      // Summary of fix results
+      const successfulFixes = vs.appliedFixes.filter(f => f.success).length;
+      const failedFixes = vs.appliedFixes.filter(f => !f.success).length;
+      lines.push(`**Successful Fixes:** ${successfulFixes}`);
+      if (failedFixes > 0) {
+        lines.push(`**Failed Fixes:** ${failedFixes}`);
+      }
+      lines.push('');
+    }
+    
+    // Remaining Errors
+    if (vs.remainingErrors.length > 0) {
+      lines.push('### Remaining Errors');
+      lines.push('');
+      
+      // Group by category
+      const errorsByCategory = new Map<PostResurrectionErrorCategory, ErrorSummary[]>();
+      for (const error of vs.remainingErrors) {
+        const existing = errorsByCategory.get(error.category) || [];
+        existing.push(error);
+        errorsByCategory.set(error.category, existing);
+      }
+      
+      for (const [category, errors] of errorsByCategory) {
+        const categoryLabel = category.replace(/_/g, ' ');
+        lines.push(`#### ${categoryLabel.charAt(0).toUpperCase() + categoryLabel.slice(1)} (${errors.length})`);
+        lines.push('');
+        
+        // Show first 5 errors per category
+        const displayErrors = errors.slice(0, 5);
+        for (const error of displayErrors) {
+          const packageInfo = error.packageName ? ` (${error.packageName})` : '';
+          lines.push(`- ${error.message}${packageInfo}`);
+        }
+        
+        if (errors.length > 5) {
+          lines.push(`- ... and ${errors.length - 5} more`);
+        }
+        lines.push('');
+      }
+    }
+    
+    // Fix History
+    if (vs.fixHistory) {
+      lines.push('### Fix History');
+      lines.push('');
+      lines.push(`**Repository:** ${vs.fixHistory.repoId}`);
+      lines.push(`**Total Historical Fixes:** ${vs.fixHistory.totalFixes}`);
+      
+      if (vs.fixHistory.lastResurrection) {
+        lines.push(`**Last Resurrection:** ${new Date(vs.fixHistory.lastResurrection).toISOString()}`);
+      }
+      lines.push('');
+      
+      if (vs.fixHistory.topStrategies.length > 0) {
+        lines.push('#### Most Successful Strategies');
+        lines.push('');
+        lines.push('| Error Pattern | Strategy | Success Count |');
+        lines.push('|---------------|----------|---------------|');
+        
+        for (const strategy of vs.fixHistory.topStrategies) {
+          lines.push(`| ${strategy.errorPattern} | ${strategy.strategyType} | ${strategy.successCount} |`);
+        }
+        lines.push('');
+      }
+    }
+  }
   
   // AST Analysis Insights
   if (data.hybridAnalysis) {
@@ -1185,6 +1474,83 @@ async function formatHTMLReport(report: ResurrectionReport): Promise<string> {
           </div>
         </div>
       </section>
+      
+      ${report.validationSummary ? `
+      <!-- Post-Resurrection Validation -->
+      <section class="section">
+        <h2>🔧 Post-Resurrection Validation</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-value ${report.validationSummary.success ? 'success' : 'error'}">
+              ${report.validationSummary.success ? '✅ PASSED' : '❌ FAILED'}
+            </span>
+            <span class="stat-label">Validation Status</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value info">${report.validationSummary.iterationCount}/${report.validationSummary.maxIterations}</span>
+            <span class="stat-label">Iterations</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value success">${report.validationSummary.appliedFixes.filter(f => f.success).length}</span>
+            <span class="stat-label">Successful Fixes</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value ${report.validationSummary.remainingErrors.length > 0 ? 'warning' : 'success'}">${report.validationSummary.remainingErrors.length}</span>
+            <span class="stat-label">Remaining Errors</span>
+          </div>
+        </div>
+        ${report.validationSummary.appliedFixes.length > 0 ? `
+        <h3>Applied Fixes</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Iteration</th>
+              <th>Error Category</th>
+              <th>Package</th>
+              <th>Strategy</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${report.validationSummary.appliedFixes.map(fix => `
+              <tr>
+                <td>${fix.iteration}</td>
+                <td>${fix.errorCategory.replace(/_/g, ' ')}</td>
+                <td>${fix.packageName || '-'}</td>
+                <td>${fix.strategyDescription}</td>
+                <td class="${fix.success ? 'success' : 'error'}">${fix.success ? '✅' : '❌'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+        ${report.validationSummary.fixHistory ? `
+        <h3>Fix History</h3>
+        <p><strong>Repository:</strong> ${report.validationSummary.fixHistory.repoId}</p>
+        <p><strong>Total Historical Fixes:</strong> ${report.validationSummary.fixHistory.totalFixes}</p>
+        ${report.validationSummary.fixHistory.topStrategies.length > 0 ? `
+        <table>
+          <thead>
+            <tr>
+              <th>Error Pattern</th>
+              <th>Strategy</th>
+              <th>Success Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${report.validationSummary.fixHistory.topStrategies.map(s => `
+              <tr>
+                <td>${s.errorPattern}</td>
+                <td>${s.strategyType}</td>
+                <td class="success">${s.successCount}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+        ` : ''}
+      </section>
+      ` : ''}
       
       ${report.metricsComparison ? `
       <!-- Metrics Comparison -->

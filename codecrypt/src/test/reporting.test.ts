@@ -17,7 +17,9 @@ import {
   HybridAnalysis,
   MetricsSnapshot,
   TimeMachineValidationResult,
-  ResurrectionVerdict
+  ResurrectionVerdict,
+  PostResurrectionValidationResult,
+  FixHistory
 } from '../types';
 
 suite('Reporting Service', () => {
@@ -1324,6 +1326,285 @@ suite('Reporting Service', () => {
       assert.strictEqual(report.resurrectionVerdict?.resurrected, true);
       assert.strictEqual(report.resurrectionVerdict?.errorsFixed, 10);
       assert.strictEqual(report.resurrectionVerdict?.errorsRemaining, 0);
+    });
+  });
+
+  suite('Post-Resurrection Validation Summary', () => {
+    test('should include validation summary in report when validation result is provided', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: true,
+        iterations: 3,
+        appliedFixes: [
+          {
+            iteration: 1,
+            error: {
+              category: 'dependency_version_conflict',
+              message: 'Could not resolve dependency',
+              packageName: 'lodash',
+              priority: 10
+            },
+            strategy: { type: 'legacy_peer_deps' },
+            result: { success: true, strategy: { type: 'legacy_peer_deps' } }
+          },
+          {
+            iteration: 2,
+            error: {
+              category: 'peer_dependency_conflict',
+              message: 'Peer dependency conflict',
+              packageName: 'react',
+              priority: 8
+            },
+            strategy: { type: 'adjust_version', package: 'react', newVersion: '18.0.0' },
+            result: { success: true, strategy: { type: 'adjust_version', package: 'react', newVersion: '18.0.0' } }
+          }
+        ],
+        remainingErrors: [],
+        duration: 5000
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.validationSummary);
+      assert.strictEqual(report.validationSummary?.success, true);
+      assert.strictEqual(report.validationSummary?.iterationCount, 3);
+      assert.strictEqual(report.validationSummary?.appliedFixes.length, 2);
+      assert.strictEqual(report.validationSummary?.remainingErrors.length, 0);
+      assert.strictEqual(report.validationSummary?.duration, 5000);
+    });
+
+    test('should include validation summary with remaining errors', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: false,
+        iterations: 10,
+        appliedFixes: [
+          {
+            iteration: 1,
+            error: {
+              category: 'native_module_failure',
+              message: 'node-gyp build failed',
+              packageName: 'bcrypt',
+              priority: 10
+            },
+            strategy: { type: 'substitute_package', original: 'bcrypt', replacement: 'bcryptjs' },
+            result: { success: false, strategy: { type: 'substitute_package', original: 'bcrypt', replacement: 'bcryptjs' }, error: 'Substitution failed' }
+          }
+        ],
+        remainingErrors: [
+          {
+            category: 'native_module_failure',
+            message: 'node-gyp build failed',
+            packageName: 'bcrypt',
+            priority: 10
+          },
+          {
+            category: 'type_error',
+            message: 'Type error in index.ts',
+            priority: 5
+          }
+        ],
+        duration: 30000
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.validationSummary);
+      assert.strictEqual(report.validationSummary?.success, false);
+      assert.strictEqual(report.validationSummary?.iterationCount, 10);
+      assert.strictEqual(report.validationSummary?.appliedFixes.length, 1);
+      assert.strictEqual(report.validationSummary?.appliedFixes[0].success, false);
+      assert.strictEqual(report.validationSummary?.remainingErrors.length, 2);
+    });
+
+    test('should include fix history in validation summary', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: true,
+        iterations: 1,
+        appliedFixes: [],
+        remainingErrors: [],
+        duration: 1000
+      };
+
+      const fixHistory: FixHistory = {
+        repoId: 'test-repo',
+        fixes: [
+          {
+            errorPattern: 'dependency_version_conflict:lodash',
+            strategy: { type: 'legacy_peer_deps' },
+            successCount: 5,
+            lastUsed: new Date('2024-01-01')
+          },
+          {
+            errorPattern: 'peer_dependency_conflict:react',
+            strategy: { type: 'adjust_version', package: 'react', newVersion: '18.0.0' },
+            successCount: 3,
+            lastUsed: new Date('2024-01-02')
+          }
+        ],
+        lastResurrection: new Date('2024-01-02')
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult,
+        fixHistory
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.validationSummary);
+      assert.ok(report.validationSummary?.fixHistory);
+      assert.strictEqual(report.validationSummary?.fixHistory?.repoId, 'test-repo');
+      assert.strictEqual(report.validationSummary?.fixHistory?.totalFixes, 2);
+      assert.strictEqual(report.validationSummary?.fixHistory?.topStrategies.length, 2);
+      assert.strictEqual(report.validationSummary?.fixHistory?.topStrategies[0].successCount, 5);
+    });
+
+    test('should include validation summary in markdown report', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: true,
+        iterations: 2,
+        appliedFixes: [
+          {
+            iteration: 1,
+            error: {
+              category: 'lockfile_conflict',
+              message: 'Lockfile version mismatch',
+              priority: 8
+            },
+            strategy: { type: 'remove_lockfile', lockfile: 'package-lock.json' },
+            result: { success: true, strategy: { type: 'remove_lockfile', lockfile: 'package-lock.json' } }
+          }
+        ],
+        remainingErrors: [],
+        duration: 3000
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('## 🔧 Post-Resurrection Validation'));
+      assert.ok(report.markdown.includes('✅ PASSED'));
+      assert.ok(report.markdown.includes('**Iterations:** 2/10'));
+      assert.ok(report.markdown.includes('### Applied Fixes'));
+      assert.ok(report.markdown.includes('lockfile conflict'));
+      assert.ok(report.markdown.includes('Removed lockfile: package-lock.json'));
+    });
+
+    test('should include remaining errors in markdown report', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: false,
+        iterations: 10,
+        appliedFixes: [],
+        remainingErrors: [
+          {
+            category: 'syntax_error',
+            message: 'Unexpected token',
+            priority: 10
+          }
+        ],
+        duration: 60000
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('❌ FAILED'));
+      assert.ok(report.markdown.includes('### Remaining Errors'));
+      assert.ok(report.markdown.includes('Syntax error'));
+      assert.ok(report.markdown.includes('Unexpected token'));
+    });
+
+    test('should include fix history in markdown report', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const validationResult: PostResurrectionValidationResult = {
+        success: true,
+        iterations: 1,
+        appliedFixes: [],
+        remainingErrors: [],
+        duration: 1000
+      };
+
+      const fixHistory: FixHistory = {
+        repoId: 'my-test-repo',
+        fixes: [
+          {
+            errorPattern: 'dependency_not_found:express',
+            strategy: { type: 'force_install' },
+            successCount: 10,
+            lastUsed: new Date('2024-01-15')
+          }
+        ],
+        lastResurrection: new Date('2024-01-15')
+      };
+
+      const options: ReportGenerationOptions = {
+        validationResult,
+        fixHistory
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      assert.ok(report.markdown.includes('### Fix History'));
+      assert.ok(report.markdown.includes('**Repository:** my-test-repo'));
+      assert.ok(report.markdown.includes('**Total Historical Fixes:** 1'));
+      assert.ok(report.markdown.includes('#### Most Successful Strategies'));
+      assert.ok(report.markdown.includes('dependency_not_found:express'));
+      assert.ok(report.markdown.includes('force_install'));
+      assert.ok(report.markdown.includes('10'));
     });
   });
 });

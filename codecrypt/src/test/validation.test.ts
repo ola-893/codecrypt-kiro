@@ -54,7 +54,7 @@ suite('Validation Service', () => {
   });
   
   test('should detect TypeScript project', async function() {
-    this.timeout(10000); // 10 second timeout for TypeScript compilation
+    this.timeout(60000); // 60 second timeout for npm install and TypeScript compilation
     
     // Create tsconfig.json
     const tsconfig = {
@@ -170,7 +170,7 @@ suite('Validation Service', () => {
   });
   
   test('should run both compilation and tests for TypeScript project with tests', async function() {
-    this.timeout(10000); // 10 second timeout
+    this.timeout(60000); // 60 second timeout for npm install and TypeScript compilation
     
     // Create tsconfig.json
     const tsconfig = {
@@ -227,7 +227,7 @@ suite('Validation Service', () => {
   });
   
   test('should fail validation if compilation fails', async function() {
-    this.timeout(10000); // 10 second timeout
+    this.timeout(60000); // 60 second timeout for npm install and TypeScript compilation
     
     // Create tsconfig.json
     const tsconfig = {

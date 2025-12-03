@@ -182,12 +182,14 @@ export function executeSandboxedNpm(
 
 /**
  * Execute npm install in a sandboxed environment
+ * Uses --legacy-peer-deps to handle peer dependency conflicts in legacy repositories
+ * Uses --ignore-scripts to skip native compilation that may fail on modern architectures
  * 
  * @param repoPath Path to the repository
  * @returns Installation output
  */
 export function sandboxedNpmInstall(repoPath: string): string {
-  return executeSandboxedNpm('install', {
+  return executeSandboxedNpm('install --legacy-peer-deps --ignore-scripts', {
     cwd: repoPath,
     repoPath,
     timeout: 180000 // 3 minutes for install
