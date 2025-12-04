@@ -194,29 +194,33 @@ function identifyRefactoringOpportunities(
       });
 
       // Modernization suggestions
-      llm.modernizationSuggestions.forEach((suggestion) => {
-        // Determine impact based on keywords
-        let impact: 'low' | 'medium' | 'high' = 'medium';
-        if (
-          suggestion.toLowerCase().includes('async') ||
-          suggestion.toLowerCase().includes('promise') ||
-          suggestion.toLowerCase().includes('error handling')
-        ) {
-          impact = 'high';
-        } else if (
-          suggestion.toLowerCase().includes('const') ||
-          suggestion.toLowerCase().includes('let') ||
-          suggestion.toLowerCase().includes('arrow function')
-        ) {
-          impact = 'low';
-        }
+      if (Array.isArray(llm.modernizationSuggestions)) {
+        llm.modernizationSuggestions.forEach((suggestion) => {
+          // Determine impact based on keywords
+          let impact: 'low' | 'medium' | 'high' = 'medium';
+          if (typeof suggestion === 'string') {
+            if (
+              suggestion.toLowerCase().includes('async') ||
+              suggestion.toLowerCase().includes('promise') ||
+              suggestion.toLowerCase().includes('error handling')
+            ) {
+              impact = 'high';
+            } else if (
+              suggestion.toLowerCase().includes('const') ||
+              suggestion.toLowerCase().includes('let') ||
+              suggestion.toLowerCase().includes('arrow function')
+            ) {
+              impact = 'low';
+            }
+          }
 
-        opportunities.push({
-          filePath,
-          description: suggestion,
-          impact,
+          opportunities.push({
+            filePath,
+            description: suggestion,
+            impact,
+          });
         });
-      });
+      }
     }
   }
 

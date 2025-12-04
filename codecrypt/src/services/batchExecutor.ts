@@ -36,16 +36,21 @@ export class NpmBatchExecutor implements BatchExecutor {
     const packageJsonContent = await this._readFile(packageJsonPath);
     const packageJson = JSON.parse(packageJsonContent);
 
+    let changed = false;
     for (const pkg of batch.packages) {
       if (packageJson.dependencies && packageJson.dependencies[pkg.packageName]) {
         packageJson.dependencies[pkg.packageName] = pkg.targetVersion;
+        changed = true;
       }
       if (packageJson.devDependencies && packageJson.devDependencies[pkg.packageName]) {
         packageJson.devDependencies[pkg.packageName] = pkg.targetVersion;
+        changed = true;
       }
     }
 
-    await this._writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+    if (changed) {
+      await this._writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+    }
   }
 
   private async restorePackageJson(projectPath: string): Promise<void> {

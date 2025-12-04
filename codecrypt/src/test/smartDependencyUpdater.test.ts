@@ -32,8 +32,8 @@ suite('SmartDependencyUpdater Unit Tests', () => {
     blockingDetectorStub = {
       isKnownBlocking: sinon.stub(),
       getBlockingReason: sinon.stub(),
-      detect: sinon.stub(),
-    };
+      detect: sinon.stub().resolves([]),
+    } as sinon.SinonStubbedInstance<IBlockingDependencyDetector>;
     urlValidatorStub = {
       validate: sinon.stub(),
       findNpmAlternative: sinon.stub(),
@@ -75,6 +75,9 @@ suite('SmartDependencyUpdater Unit Tests', () => {
       { packageName: 'normal-pkg', currentVersion: '1.0.0', targetVersion: '1.1.0', priority: 50, reason: '', fixesVulnerabilities: false, vulnerabilityCount: 0 },
     ];
 
+    blockingDetectorStub.detect.withArgs(sinon.match.any).resolves([
+      { name: 'blocking-pkg', version: '1.0.0', reason: 'architecture_incompatible', replacement: { oldName: 'blocking-pkg', newName: 'replacement-pkg', versionMapping: { '*': '3.0.0' }, requiresCodeChanges: true } },
+    ]);
     blockingDetectorStub.isKnownBlocking.withArgs('blocking-pkg').returns(true);
     blockingDetectorStub.getBlockingReason.withArgs('blocking-pkg').returns('architecture_incompatible');
     replacementRegistryStub.lookup.withArgs('blocking-pkg').returns({
@@ -85,7 +88,7 @@ suite('SmartDependencyUpdater Unit Tests', () => {
     });
     batchPlannerStub.createBatches.returns([{
       id: 'batch-1',
-      packages: planItems,
+      packages: [planItems[1]],
       priority: 100,
       estimatedRisk: 'high',
     }]);

@@ -181,19 +181,29 @@ export class GeminiClient {
    * Analyze code with retry logic and exponential backoff
    */
   async analyzeCode(prompt: string, retryCount = 0): Promise<string> {
+    const startTime = Date.now();
     try {
       logger.info(`Gemini analysis attempt ${retryCount + 1}/${this.config.maxRetries + 1}`);
+      logger.debug(`Prompt length: ${prompt.length} characters`);
 
       // Create a timeout promise
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), this.config.timeout);
+        setTimeout(() => {
+          const elapsed = Date.now() - startTime;
+          logger.warn(`Gemini request timeout after ${elapsed}ms (configured: ${this.config.timeout}ms)`);
+          reject(new Error(`Request timeout after ${elapsed}ms`));
+        }, this.config.timeout);
       });
 
       // Race between the API call and timeout
+      logger.debug('Starting Gemini API call...');
       const result = await Promise.race([
         this.model.generateContent(prompt),
         timeoutPromise,
       ]);
+
+      const elapsed = Date.now() - startTime;
+      logger.info(`Gemini API call completed in ${elapsed}ms`);
 
       const response = result.response;
       const text = response.text();
@@ -202,19 +212,23 @@ export class GeminiClient {
         throw new CodeCryptError('No text content in Gemini response');
       }
 
+      logger.debug(`Gemini response length: ${text.length} characters`);
       return text;
     } catch (error) {
+      const elapsed = Date.now() - startTime;
+      logger.error(`Gemini request failed after ${elapsed}ms`, error);
+      
       const isRetryable = this.isRetryableError(error);
       const shouldRetry = isRetryable && retryCount < this.config.maxRetries;
 
       if (shouldRetry) {
         const backoffMs = this.calculateBackoff(retryCount);
-        logger.warn(`Gemini request failed, retrying in ${backoffMs}ms`, error);
+        logger.warn(`Gemini request failed, retrying in ${backoffMs}ms (attempt ${retryCount + 1}/${this.config.maxRetries})`, error);
         await this.sleep(backoffMs);
         return this.analyzeCode(prompt, retryCount + 1);
       }
 
-      logger.error('Gemini analysis failed', error);
+      logger.error(`Gemini analysis failed after ${retryCount + 1} attempts`, error);
       throw new CodeCryptError(
         `Gemini analysis failed: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -367,15 +381,28 @@ Analysis Guidelines:
 Respond with ONLY valid JSON, no markdown formatting or additional text.`;
 
   try {
+    logger.info(`Requesting LLM analysis for ${filePath}`);
     const response = await client.analyzeCode(prompt);
+    logger.info(`Received LLM response for ${filePath}, length: ${response.length}`);
 
-    // Parse JSON response
+    // Parse JSON response with better error handling
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      logger.warn(`No JSON found in LLM response for ${filePath}`);
+      logger.debug(`Response preview: ${response.substring(0, 500)}`);
       throw new Error('No JSON found in LLM response');
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    logger.debug(`Attempting to parse JSON for ${filePath}, length: ${jsonMatch[0].length}`);
+    
+    // Try to clean up common JSON issues before parsing
+    let jsonStr = jsonMatch[0];
+    
+    // Log the raw JSON for debugging
+    logger.debug(`Raw JSON preview for ${filePath}: ${jsonStr.substring(0, 200)}`);
+    
+    const parsed = JSON.parse(jsonStr);
+    logger.info(`Successfully parsed LLM response for ${filePath}`);
 
     return {
       filePath,
@@ -388,6 +415,10 @@ Respond with ONLY valid JSON, no markdown formatting or additional text.`;
     };
   } catch (error) {
     logger.error(`Failed to parse LLM response for ${filePath}`, error);
+    if (error instanceof SyntaxError) {
+      logger.error(`JSON parse error details: ${error.message}`);
+      logger.error(`Error occurred at position: ${(error as any).position || 'unknown'}`);
+    }
     // Return a low-confidence fallback insight
     return {
       filePath,
@@ -506,16 +537,24 @@ export async function analyzeRepository(
     const fullPath = path.join(repoPath, fileAnalysis.filePath);
 
     try {
+      logger.info(`Processing file ${i + 1}/${totalFiles}: ${fileAnalysis.filePath}`);
       progress?.report({
         message: `Analyzing ${fileAnalysis.filePath} with LLM (${i + 1}/${totalFiles})`,
         increment: incrementPerFile,
       });
 
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      logger.debug(`File ${fileAnalysis.filePath} size: ${fileContent.length} bytes, ${fileAnalysis.linesOfCode} LOC`);
+      
+      const fileStartTime = Date.now();
       const insight = await analyzeFile(client, fileContent, fileAnalysis.filePath, fileAnalysis);
+      const fileElapsed = Date.now() - fileStartTime;
+      
+      logger.info(`Completed analysis of ${fileAnalysis.filePath} in ${fileElapsed}ms (confidence: ${insight.confidence})`);
       insights.push(insight);
     } catch (error) {
       logger.error(`Failed to analyze file ${fileAnalysis.filePath}`, error);
+      logger.warn(`Continuing with remaining ${totalFiles - i - 1} files`);
       // Continue with other files
     }
   }

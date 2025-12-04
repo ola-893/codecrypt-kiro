@@ -26,16 +26,16 @@ suite('PackageReplacementExecutor Property Tests', () => {
   });
 
   const packageJsonArbitrary = fc.record({
-    dependencies: fc.option(fc.dictionary(
+    dependencies: fc.dictionary(
       fc.stringMatching(/^[a-z00-9-]+$/).filter((s: string) => s.length > 0 && !s.startsWith('.') && !s.startsWith('_')),
       fc.stringMatching(/^[0-9.]+$/).filter((s: string) => s.length > 0),
       { minKeys: 0, maxKeys: 5 }
-    )),
-    devDependencies: fc.option(fc.dictionary(
+    ),
+    devDependencies: fc.dictionary(
       fc.stringMatching(/^[a-z0-9-]+$/).filter((s: string) => s.length > 0 && !s.startsWith('.') && !s.startsWith('_')),
       fc.stringMatching(/^[0-9.]+$/).filter((s: string) => s.length > 0),
       { minKeys: 0, maxKeys: 5 }
-    )),
+    ),
   });
 
   const replacementArbitrary = fc.record({

@@ -45,9 +45,14 @@ export class PackageReplacementExecutor implements IPackageReplacementExecutor {
 
     for (const replacement of replacements) {
       // Handle dependencies
-      if (packageJson.dependencies && packageJson.dependencies[replacement.oldName]) {
+      if (packageJson.dependencies?.[replacement.oldName]) {
         const oldVersion = packageJson.dependencies[replacement.oldName];
         const newVersion = replacement.versionMapping[oldVersion] || replacement.versionMapping['*'] || oldVersion;
+        
+        if (!packageJson.dependencies) {
+          packageJson.dependencies = {};
+        }
+        
         packageJson.dependencies[replacement.newName] = newVersion;
         if (replacement.oldName !== replacement.newName) {
           delete packageJson.dependencies[replacement.oldName];
@@ -61,9 +66,14 @@ export class PackageReplacementExecutor implements IPackageReplacementExecutor {
       }
 
       // Handle devDependencies
-      if (packageJson.devDependencies && packageJson.devDependencies[replacement.oldName]) {
+      if (packageJson.devDependencies?.[replacement.oldName]) {
         const oldVersion = packageJson.devDependencies[replacement.oldName];
         const newVersion = replacement.versionMapping[oldVersion] || replacement.versionMapping['*'] || oldVersion;
+
+        if (!packageJson.devDependencies) {
+          packageJson.devDependencies = {};
+        }
+
         packageJson.devDependencies[replacement.newName] = newVersion;
         if (replacement.oldName !== replacement.newName) {
           delete packageJson.devDependencies[replacement.oldName];

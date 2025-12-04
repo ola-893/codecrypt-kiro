@@ -73,7 +73,11 @@ suite('BatchExecutor Property-Based Tests', () => {
             assert.ok(runCommandStub.calledWith('git', ['checkout', 'HEAD', '--', packageJsonPath]), 'git checkout should be called on failure');
             assert.ok(!result.success, 'Execution should fail');
         } else {
-            assert.ok(writeFileStub.calledOnce, 'writeFile should be called on success');
+            if (batch.packages.length > 0) {
+                assert.ok(writeFileStub.calledOnce, 'writeFile should be called on success for non-empty batch');
+            } else {
+                assert.ok(!writeFileStub.called, 'writeFile should not be called for empty batch');
+            }
             assert.ok(!runCommandStub.calledWith('git', ['checkout', 'HEAD', '--', packageJsonPath]), 'git checkout should not be called on success');
             assert.ok(result.success, 'Execution should succeed');
         }

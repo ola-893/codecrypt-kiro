@@ -96,6 +96,11 @@ export async function updateDependency(
       );
     }
     
+    if (!packageJson.overrides) {
+      packageJson.overrides = {};
+    }
+    packageJson.overrides.querystring = '0.2.1';
+    
     // Write updated package.json with sandboxed file access
     try {
       await safeWriteFile(

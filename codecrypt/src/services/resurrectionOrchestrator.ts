@@ -23,6 +23,13 @@ import { generateResurrectionReport, ResurrectionReport } from './reporting';
 import { getLLMCache, getASTCache } from './cache';
 import { runBaselineCompilationCheck, runFinalCompilationCheck, generateResurrectionVerdict } from './compilationProof';
 import { createPostResurrectionValidator, PostResurrectionValidator } from './postResurrectionValidator';
+import { SmartDependencyUpdaterImpl } from './smartDependencyUpdater';
+import { BlockingDependencyDetector } from './blockingDependencyDetector';
+import { URLValidator } from './urlValidator';
+import { BatchPlanner } from './batchPlanner';
+import { NpmBatchExecutor } from './batchExecutor';
+import { PackageReplacementRegistry } from './packageReplacementRegistry';
+import { PackageReplacementExecutor } from './packageReplacementExecutor';
 
 const logger = getLogger();
 
@@ -55,6 +62,7 @@ interface OrchestratorState {
   hybridAnalysis?: HybridAnalysis;
   timeMachineResults?: TimeMachineValidationResult;
   postResurrectionValidationResult?: PostResurrectionValidationResult;
+  smartDependencyUpdater?: SmartDependencyUpdaterImpl;
 }
 
 /**
@@ -80,6 +88,14 @@ export class ResurrectionOrchestrator {
 
     this.state = {
       context,
+      smartDependencyUpdater: new SmartDependencyUpdaterImpl(
+        new BlockingDependencyDetector(),
+        new URLValidator(),
+        new BatchPlanner(),
+        new NpmBatchExecutor(),
+        new PackageReplacementRegistry(),
+        new PackageReplacementExecutor(context.repoPath!)
+      ),
     };
 
     this.metricsService = new MetricsService(this.eventEmitter);
@@ -321,6 +337,7 @@ export class ResurrectionOrchestrator {
       // Run LLM analysis if enabled (graceful degradation)
       let llmAnalysis;
       if (this.config.enableLLM) {
+        const llmStartTime = Date.now();
         logger.info('Running LLM analysis');
         this.eventEmitter.emitNarration({
           message: 'Analyzing code semantics with AI...',
@@ -368,7 +385,13 @@ export class ResurrectionOrchestrator {
               llmAnalysis = cachedLLM;
             } else {
               logger.info(`Performing fresh LLM analysis with ${usedProvider}`);
+              logger.info(`Analyzing ${astAnalysis.files.length} files (will prioritize top 10 by complexity)`);
+              
+              const analysisStartTime = Date.now();
               llmAnalysis = await analyzeLLMRepository(llmClient, this.state.context.repoPath, astAnalysis);
+              const analysisElapsed = Date.now() - analysisStartTime;
+              
+              logger.info(`LLM analysis completed in ${analysisElapsed}ms`);
               llmCache.set(cacheKey, llmAnalysis);
             }
             
@@ -379,7 +402,9 @@ export class ResurrectionOrchestrator {
                 summary: `Analyzed ${insight.filePath}: ${insight.modernizationSuggestions.length} suggestions`,
               });
             }
-            logger.info(`LLM analysis complete: ${llmAnalysis.insights.length} files analyzed`);
+            
+            const llmElapsed = Date.now() - llmStartTime;
+            logger.info(`LLM analysis complete: ${llmAnalysis.insights.length} files analyzed in ${llmElapsed}ms`);
           } else {
             logger.warn('No LLM API keys are configured, skipping LLM analysis.');
             this.eventEmitter.emitNarration({
@@ -388,8 +413,13 @@ export class ResurrectionOrchestrator {
             });
           }
         } catch (error: any) {
-          logger.warn('LLM analysis failed, continuing with AST only', error);
+          const llmElapsed = Date.now() - llmStartTime;
+          logger.warn(`LLM analysis failed after ${llmElapsed}ms, continuing with AST only`, error);
           const errorMessage = error.message || String(error);
+          logger.error(`LLM error details: ${errorMessage}`);
+          if (error.stack) {
+            logger.debug(`LLM error stack: ${error.stack}`);
+          }
           this.eventEmitter.emitNarration({
             message: `AI analysis unavailable (${errorMessage}). Using structural analysis only.`,
             category: 'warning',
@@ -439,7 +469,7 @@ export class ResurrectionOrchestrator {
     logger.info('Executing resurrection plan');
     
     try {
-      const plan = generateResurrectionPlan(dependencyReport);
+      const plan = this.state.context.resurrectionPlan ?? generateResurrectionPlan(dependencyReport);
       this.state.context.resurrectionPlan = plan;
 
       if (plan.items.length === 0) {
@@ -455,161 +485,10 @@ export class ResurrectionOrchestrator {
         message: `Beginning resurrection with ${plan.totalUpdates} planned updates.`,
       });
 
-      let successCount = 0;
-      let failureCount = 0;
-
-      // Execute each update in the plan
-      for (const planItem of plan.items) {
-        try {
-          logger.info(`Updating ${planItem.packageName} from ${planItem.currentVersion} to ${planItem.targetVersion}`);
-          
-          this.eventEmitter.emitNarration({
-            message: `Updating ${planItem.packageName} to version ${planItem.targetVersion}...`,
-          });
-
-          // Execute the update with timeout protection
-          const updateResult = await Promise.race([
-            updateDependency(this.state.context.repoPath, planItem),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Update timeout')), 300000) // 5 minute timeout
-            )
-          ]);
-
-          this.eventEmitter.emitDependencyUpdated({
-            packageName: planItem.packageName,
-            previousVersion: planItem.currentVersion,
-            newVersion: planItem.targetVersion,
-            success: updateResult.success,
-            vulnerabilitiesFixed: planItem.vulnerabilityCount,
-          });
-
-          if (!updateResult.success) {
-            logger.warn(`Update failed: ${planItem.packageName}`);
-            failureCount++;
-            this.eventEmitter.emitNarration({
-              message: `Failed to update ${planItem.packageName}. Continuing with next update.`,
-              category: 'warning',
-            });
-            continue;
-          }
-
-          // Validate the update with error handling
-          let validationResult;
-          try {
-            validationResult = await validateAfterUpdate(this.state.context.repoPath);
-          } catch (error: any) {
-            logger.error('Validation failed with error', error);
-            validationResult = {
-              success: false,
-              compilationChecked: false,
-              testsRun: false,
-              error: error.message || String(error),
-            };
-          }
-          
-          this.eventEmitter.emitTestCompleted({
-            testType: 'unit',
-            passed: validationResult.success,
-            testsRun: validationResult.testsRun ? 1 : 0,
-            testsPassed: validationResult.testsPassed ? 1 : 0,
-            testsFailed: validationResult.testsRun && !validationResult.testsPassed ? 1 : 0,
-            executionTime: 0,
-          });
-
-          if (!validationResult.success) {
-            logger.warn(`Update failed validation: ${planItem.packageName}`);
-            failureCount++;
-            this.eventEmitter.emitNarration({
-              message: `Update to ${planItem.packageName} failed validation. Rolling back...`,
-              category: 'warning',
-            });
-
-            // Rollback the update with error handling
-            try {
-              await rollbackLastCommit(this.state.context.repoPath);
-              logger.info('Rollback successful');
-            } catch (rollbackError) {
-              logger.error('Rollback failed', rollbackError);
-              this.eventEmitter.emitNarration({
-                message: 'Warning: Rollback failed. Manual intervention may be required.',
-                category: 'error',
-              });
-            }
-            
-            // Log the failure
-            this.state.context.transformationLog.push({
-              timestamp: new Date(),
-              type: 'dependency_update',
-              message: `Failed to update ${planItem.packageName} to ${planItem.targetVersion}`,
-              details: {
-                packageName: planItem.packageName,
-                targetVersion: planItem.targetVersion,
-                reason: validationResult.error || 'Validation failed',
-              },
-            });
-
-            continue;
-          }
-
-          // Log successful update
-          successCount++;
-          this.state.context.transformationLog.push({
-            timestamp: new Date(),
-            type: 'dependency_update',
-            message: `Updated ${planItem.packageName} from ${planItem.currentVersion} to ${planItem.targetVersion}`,
-            details: {
-              packageName: planItem.packageName,
-              oldVersion: planItem.currentVersion,
-              newVersion: planItem.targetVersion,
-            },
-          });
-
-          // Emit transformation applied
-          this.eventEmitter.emitTransformationApplied({
-            transformationType: 'dependency_update',
-            packageName: planItem.packageName,
-            version: {
-              from: planItem.currentVersion,
-              to: planItem.targetVersion,
-            },
-            details: planItem,
-            success: true,
-          });
-
-          this.eventEmitter.emitNarration({
-            message: `Successfully updated ${planItem.packageName}. Tests passing.`,
-            category: 'success',
-          });
-
-        } catch (error: any) {
-          failureCount++;
-          const errorMessage = error.message || String(error);
-          logger.error(`Failed to update ${planItem.packageName}`, error);
-          
-          this.eventEmitter.emitNarration({
-            message: `Failed to update ${planItem.packageName}: ${errorMessage}. Continuing with next update.`,
-            category: 'error',
-          });
-
-          // Log the error
-          this.state.context.transformationLog.push({
-            timestamp: new Date(),
-            type: 'error',
-            message: `Error updating ${planItem.packageName}: ${errorMessage}`,
-            details: {
-              packageName: planItem.packageName,
-              error: errorMessage,
-            },
-          });
-        }
+      if (this.state.smartDependencyUpdater) {
+        const analysisResult = await this.state.smartDependencyUpdater.analyze(this.state.context.repoPath, plan.items);
+        await this.state.smartDependencyUpdater.execute(this.state.context.repoPath, analysisResult);
       }
-
-      // Final summary
-      const totalAttempted = successCount + failureCount;
-      this.eventEmitter.emitNarration({
-        message: `Resurrection plan execution complete. ${successCount}/${totalAttempted} updates successful.`,
-        category: successCount === totalAttempted ? 'success' : 'info',
-      });
 
     } catch (error: any) {
       logger.error('Failed to execute resurrection plan', error);

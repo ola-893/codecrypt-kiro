@@ -40,20 +40,10 @@ export class SmartDependencyUpdaterImpl implements SmartDependencyUpdater {
     const replacements: PackageReplacement[] = [];
 
     // 1. Detect blocking dependencies and dead URLs
-    for (const item of planItems) {
-      // Check for blocking dependencies
-      if (this.blockingDependencyDetector.isKnownBlocking(item.packageName)) {
-        const reason = this.blockingDependencyDetector.getBlockingReason(item.packageName);
-        if (reason) {
-          blockingDependencies.push({
-            name: item.packageName,
-            version: item.targetVersion,
-            reason: reason,
-            replacement: this.packageReplacementRegistry.lookup(item.packageName) || undefined,
-          });
-        }
-      }
+    const detectedBlockingDependencies = await this.blockingDependencyDetector.detect(new Map(planItems.map(p => [p.packageName, p.currentVersion])));
+    blockingDependencies.push(...detectedBlockingDependencies);
 
+    for (const item of planItems) {
       // Check for dead URLs (if the package name looks like a URL)
       if (item.packageName.startsWith('http://') || item.packageName.startsWith('https://') || item.packageName.startsWith('github:')) {
         const urlValidationResult = await this.urlValidator.validate(item.packageName);
