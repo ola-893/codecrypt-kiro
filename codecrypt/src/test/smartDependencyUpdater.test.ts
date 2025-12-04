@@ -39,6 +39,15 @@ suite('SmartDependencyUpdater Unit Tests', () => {
       findNpmAlternative: sinon.stub(),
       extractPackageFromUrl: sinon.stub(),
     };
+    // Default stub for URL validation - returns valid for all URLs
+    urlValidatorStub.validate.resolves({
+      url: '',
+      isValid: true,
+      statusCode: 200,
+    });
+    urlValidatorStub.findNpmAlternative.resolves(null);
+    urlValidatorStub.extractPackageFromUrl.returns(null);
+    
     batchPlannerStub = sinon.createStubInstance(BatchPlanner);
     batchExecutorStub = {
       execute: sinon.stub(),

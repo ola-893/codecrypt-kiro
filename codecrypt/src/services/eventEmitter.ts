@@ -23,6 +23,11 @@ import {
   ValidationErrorAnalysisEventData,
   ValidationFixAppliedEventData,
   ValidationFixOutcomeEventData,
+  // Batch execution event types
+  BatchStartedEventData,
+  BatchCompletedEventData,
+  PackageUpdateStartedEventData,
+  PackageUpdatedEventData,
 } from '../types';
 import { getLogger } from '../utils/logger';
 
@@ -144,6 +149,38 @@ export class ResurrectionEventEmitter extends EventEmitter {
    */
   emitValidationFixOutcome(data: ValidationFixOutcomeEventData): void {
     this.emitEvent('validation_fix_outcome', data);
+  }
+
+  // ============================================================================
+  // Batch Execution Events
+  // ============================================================================
+
+  /**
+   * Emit a batch started event
+   */
+  emitBatchStarted(data: BatchStartedEventData): void {
+    this.emitEvent('batch_started', data);
+  }
+
+  /**
+   * Emit a batch completed event
+   */
+  emitBatchCompleted(data: BatchCompletedEventData): void {
+    this.emitEvent('batch_completed', data);
+  }
+
+  /**
+   * Emit a package update started event
+   */
+  emitPackageUpdateStarted(data: PackageUpdateStartedEventData): void {
+    this.emitEvent('package_update_started', data);
+  }
+
+  /**
+   * Emit a package updated event
+   */
+  emitPackageUpdated(data: PackageUpdatedEventData): void {
+    this.emitEvent('package_updated', data);
   }
 
   /**
@@ -297,6 +334,46 @@ export class ResurrectionEventEmitter extends EventEmitter {
     listener: (event: ResurrectionEvent<ValidationFixOutcomeEventData>) => void
   ): void {
     this.on('validation_fix_outcome', listener);
+  }
+
+  // ============================================================================
+  // Batch Execution Event Subscriptions
+  // ============================================================================
+
+  /**
+   * Subscribe to batch started events
+   */
+  onBatchStarted(
+    listener: (event: ResurrectionEvent<BatchStartedEventData>) => void
+  ): void {
+    this.on('batch_started', listener);
+  }
+
+  /**
+   * Subscribe to batch completed events
+   */
+  onBatchCompleted(
+    listener: (event: ResurrectionEvent<BatchCompletedEventData>) => void
+  ): void {
+    this.on('batch_completed', listener);
+  }
+
+  /**
+   * Subscribe to package update started events
+   */
+  onPackageUpdateStarted(
+    listener: (event: ResurrectionEvent<PackageUpdateStartedEventData>) => void
+  ): void {
+    this.on('package_update_started', listener);
+  }
+
+  /**
+   * Subscribe to package updated events
+   */
+  onPackageUpdated(
+    listener: (event: ResurrectionEvent<PackageUpdatedEventData>) => void
+  ): void {
+    this.on('package_updated', listener);
   }
 
   /**

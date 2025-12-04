@@ -430,7 +430,7 @@ export class FixStrategyEngine implements IFixStrategyEngine {
 
       // Helper to substitute in a dependencies object
       const substituteIn = (deps: Record<string, string> | undefined): boolean => {
-        if (!deps || !deps[original]) return false;
+        if (!deps || !deps[original]) {return false;}
         
         const version = deps[original];
         delete deps[original];

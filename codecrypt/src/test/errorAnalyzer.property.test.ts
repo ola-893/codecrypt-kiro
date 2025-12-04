@@ -206,6 +206,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: errorMessage,
@@ -253,6 +254,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: errorMessage,
@@ -297,6 +299,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: errorMessage,
@@ -339,6 +342,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: errorMessage,
@@ -388,6 +392,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: combinedErrors,
@@ -429,6 +434,7 @@ suite('ErrorAnalyzer Property Tests', () => {
           () => {
             const result: PostResurrectionCompilationResult = {
               success: true,
+              compilationStatus: 'passed',
               exitCode: 0,
               stdout: '',
               stderr: '',
@@ -462,6 +468,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             
             const result: PostResurrectionCompilationResult = {
               success: false,
+              compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: errorMessage,
@@ -507,6 +514,7 @@ suite('ErrorAnalyzer Property Tests', () => {
             (errorMessage) => {
               const result: PostResurrectionCompilationResult = {
                 success: false,
+              compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: errorMessage,

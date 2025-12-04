@@ -93,16 +93,16 @@ suite('CompilationRunner', () => {
       assert.strictEqual(cmd, 'build:prod');
     });
 
-    test('should return build as default when no scripts', () => {
+    test('should return null when no scripts', () => {
       const packageJson = {};
       const cmd = runner.detectBuildCommand(packageJson);
-      assert.strictEqual(cmd, 'build');
+      assert.strictEqual(cmd, null);
     });
 
-    test('should return build as default when no matching script', () => {
+    test('should fallback to test when no build script', () => {
       const packageJson = { scripts: { test: 'jest', lint: 'eslint' } };
       const cmd = runner.detectBuildCommand(packageJson);
-      assert.strictEqual(cmd, 'build');
+      assert.strictEqual(cmd, 'test');
     });
 
     test('should prioritize build over compile', () => {
@@ -200,10 +200,127 @@ suite('CompilationRunner', () => {
     });
   });
 
+  suite('compile - missing build script handling', () => {
+    test('should return not_applicable when no build script exists', async function() {
+      this.timeout(10000);
+      
+      // Create a package.json without any build scripts
+      const packageJson = {
+        name: 'test-project',
+        version: '1.0.0',
+        scripts: {
+          test: 'echo "test"'
+        }
+      };
+      await fs.writeFile(
+        path.join(testRepoPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      const options: CompileOptions = {
+        packageManager: 'npm',
+        buildCommand: 'build',
+        timeout: 10000
+      };
+
+      const result = await runner.compile(testRepoPath, options);
+      
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.compilationStatus, 'not_applicable');
+      assert.strictEqual(result.exitCode, 0);
+      assert.ok(result.stdout.includes('No build script detected'));
+      assert.ok(result.duration >= 0);
+    });
+
+    test('should return not_applicable when package.json has no scripts', async function() {
+      this.timeout(10000);
+      
+      // Create a package.json without scripts section
+      const packageJson = {
+        name: 'test-project',
+        version: '1.0.0'
+      };
+      await fs.writeFile(
+        path.join(testRepoPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      const options: CompileOptions = {
+        packageManager: 'npm',
+        buildCommand: 'build',
+        timeout: 10000
+      };
+
+      const result = await runner.compile(testRepoPath, options);
+      
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.compilationStatus, 'not_applicable');
+      assert.strictEqual(result.exitCode, 0);
+    });
+
+    test('should execute build when build script exists', async function() {
+      this.timeout(10000);
+      
+      // Create a package.json with a build script
+      const packageJson = {
+        name: 'test-project',
+        scripts: {
+          build: 'echo "Building..."'
+        }
+      };
+      await fs.writeFile(
+        path.join(testRepoPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      const options: CompileOptions = {
+        packageManager: 'npm',
+        buildCommand: 'build',
+        timeout: 10000
+      };
+
+      const result = await runner.compile(testRepoPath, options);
+      
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.compilationStatus, 'passed');
+      assert.strictEqual(result.exitCode, 0);
+      assert.ok(result.stdout.includes('Building'));
+    });
+
+    test('should return failed status when build fails', async function() {
+      this.timeout(10000);
+      
+      // Create a package.json with a failing build script
+      const packageJson = {
+        name: 'test-project',
+        scripts: {
+          build: 'exit 1'
+        }
+      };
+      await fs.writeFile(
+        path.join(testRepoPath, 'package.json'),
+        JSON.stringify(packageJson, null, 2)
+      );
+
+      const options: CompileOptions = {
+        packageManager: 'npm',
+        buildCommand: 'build',
+        timeout: 10000
+      };
+
+      const result = await runner.compile(testRepoPath, options);
+      
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.compilationStatus, 'failed');
+      assert.notStrictEqual(result.exitCode, 0);
+    });
+  });
+
   suite('generateCompilationProof', () => {
     test('should generate proof with all required fields', () => {
       const result: PostResurrectionCompilationResult = {
         success: true,
+        compilationStatus: 'passed',
         exitCode: 0,
         stdout: 'Build successful',
         stderr: '',
@@ -229,6 +346,7 @@ suite('CompilationRunner', () => {
     test('should generate different hashes for different outputs', () => {
       const result1: PostResurrectionCompilationResult = {
         success: true,
+        compilationStatus: 'passed',
         exitCode: 0,
         stdout: 'Output 1',
         stderr: '',
@@ -237,6 +355,7 @@ suite('CompilationRunner', () => {
 
       const result2: PostResurrectionCompilationResult = {
         success: true,
+        compilationStatus: 'passed',
         exitCode: 0,
         stdout: 'Output 2',
         stderr: '',
@@ -257,6 +376,7 @@ suite('CompilationRunner', () => {
     test('should generate same hash for same output', () => {
       const result: PostResurrectionCompilationResult = {
         success: true,
+        compilationStatus: 'passed',
         exitCode: 0,
         stdout: 'Same output',
         stderr: 'Same error',

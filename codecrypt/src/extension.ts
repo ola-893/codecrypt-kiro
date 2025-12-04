@@ -17,18 +17,17 @@ import { ResurrectionStage } from './services/progress.js';
  */
 export function activate(context: vscode.ExtensionContext) {
 	try {
-		console.log('[CodeCrypt] Starting extension activation...');
-		
-		// Initialize logger
+		// Initialize logger first
 		const logger = initializeLogger('CodeCrypt');
+		logger.info('Starting extension activation...');
+		
 		logger.section('🧟 CODECRYPT EXTENSION ACTIVATED');
 		logger.info('CodeCrypt is ready to resurrect your code!');
-		console.log('[CodeCrypt] Logger initialized');
+		logger.info('Logger initialized');
 		
 		// Initialize secure configuration manager
 		initializeSecureConfig(context);
 		logger.info('Secure configuration initialized');
-		console.log('[CodeCrypt] Secure configuration initialized');
 
 	// Register the resurrect repository command
 	const resurrectCommand = vscode.commands.registerCommand(
@@ -498,13 +497,14 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	
 	logger.info('CodeCrypt commands registered successfully');
-	console.log('[CodeCrypt] All commands registered successfully');
-	console.log('[CodeCrypt] Extension activation complete ✓');
+	logger.info('All commands registered successfully');
+	logger.info('Extension activation complete ✓');
 	} catch (error) {
 		// Log activation error with full details
-		console.error('[CodeCrypt] Extension activation FAILED:', error);
+		const logger = initializeLogger('CodeCrypt');
+		logger.error('Extension activation FAILED:', error);
 		if (error instanceof Error) {
-			console.error('[CodeCrypt] Error stack:', error.stack);
+			logger.error('Error stack:', error.stack);
 		}
 		vscode.window.showErrorMessage(
 			`CodeCrypt failed to activate: ${error instanceof Error ? error.message : String(error)}`

@@ -56,6 +56,7 @@ suite('CompilationRunner Property Tests', () => {
             // Create a successful compilation result
             const result: PostResurrectionCompilationResult = {
               success: true,
+              compilationStatus: 'passed',
               exitCode: 0,
               stdout,
               stderr,
@@ -117,6 +118,7 @@ suite('CompilationRunner Property Tests', () => {
           (stdout, stderr) => {
             const result: PostResurrectionCompilationResult = {
               success: true,
+              compilationStatus: 'passed',
               exitCode: 0,
               stdout,
               stderr,
@@ -158,6 +160,7 @@ suite('CompilationRunner Property Tests', () => {
           ([stdout1, stdout2]) => {
             const result1: PostResurrectionCompilationResult = {
               success: true,
+              compilationStatus: 'passed',
               exitCode: 0,
               stdout: stdout1,
               stderr: '',
@@ -166,6 +169,7 @@ suite('CompilationRunner Property Tests', () => {
 
             const result2: PostResurrectionCompilationResult = {
               success: true,
+              compilationStatus: 'passed',
               exitCode: 0,
               stdout: stdout2,
               stderr: '',

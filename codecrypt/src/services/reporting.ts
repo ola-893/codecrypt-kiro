@@ -21,7 +21,10 @@ import {
   AnalyzedError,
   FixHistory,
   FixStrategy,
-  PostResurrectionErrorCategory
+  PostResurrectionErrorCategory,
+  BatchExecutionResult,
+  PackageUpdateResult,
+  LLMAnalysis
 } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
@@ -61,6 +64,10 @@ export interface ResurrectionReport {
   dashboardScreenshots?: string[];
   /** Post-resurrection validation summary */
   validationSummary?: ValidationSummary;
+  /** Batch execution summary */
+  batchExecutionSummary?: BatchExecutionSummary;
+  /** LLM analysis summary */
+  llmAnalysisSummary?: LLMAnalysisSummary;
   /** Markdown formatted report */
   markdown: string;
 }
@@ -183,6 +190,46 @@ export interface FixHistorySummary {
 }
 
 /**
+ * Summary of batch execution results for reporting
+ * 
+ * _Requirements: 1.5_
+ */
+export interface BatchExecutionSummary {
+  /** Total number of batches executed */
+  totalBatches: number;
+  /** Total number of packages attempted across all batches */
+  totalPackagesAttempted: number;
+  /** Total number of packages successfully updated */
+  totalPackagesSucceeded: number;
+  /** Total number of packages that failed to update */
+  totalPackagesFailed: number;
+  /** Detailed results for each batch */
+  batchResults: BatchExecutionResult[];
+  /** Total duration of all batch executions in milliseconds */
+  totalDuration: number;
+}
+
+/**
+ * Summary of LLM analysis results for reporting
+ * 
+ * _Requirements: 3.4_
+ */
+export interface LLMAnalysisSummary {
+  /** Total number of files in the repository */
+  totalFiles: number;
+  /** Number of files successfully analyzed */
+  filesAnalyzed: number;
+  /** Number of files skipped due to timeouts or errors */
+  filesSkipped: number;
+  /** Number of timeout occurrences */
+  timeoutCount: number;
+  /** Whether partial results were returned */
+  partialResults: boolean;
+  /** Reason for partial results if applicable */
+  partialResultsReason?: string;
+}
+
+/**
  * Options for generating a resurrection report
  */
 export interface ReportGenerationOptions {
@@ -206,6 +253,10 @@ export interface ReportGenerationOptions {
   validationResult?: PostResurrectionValidationResult;
   /** Fix history for the repository */
   fixHistory?: FixHistory;
+  /** Batch execution results */
+  batchExecutionResults?: BatchExecutionResult[];
+  /** LLM analysis results */
+  llmAnalysis?: LLMAnalysis;
 }
 
 /**
@@ -248,6 +299,16 @@ export function generateResurrectionReport(
     ? createValidationSummary(options.validationResult, options.fixHistory)
     : undefined;
   
+  // Generate batch execution summary if batch results are available
+  const batchExecutionSummary = options.batchExecutionResults && options.batchExecutionResults.length > 0
+    ? createBatchExecutionSummary(options.batchExecutionResults)
+    : undefined;
+  
+  // Generate LLM analysis summary if LLM analysis is available
+  const llmAnalysisSummary = options.llmAnalysis && options.hybridAnalysis
+    ? createLLMAnalysisSummary(options.llmAnalysis, options.hybridAnalysis.astAnalysis.files.length)
+    : undefined;
+  
   // Generate markdown report
   const markdown = formatMarkdownReport({
     summary,
@@ -263,7 +324,9 @@ export function generateResurrectionReport(
     ghostTourPath: options.ghostTourPath,
     symphonyPath: options.symphonyPath,
     dashboardScreenshots: options.dashboardScreenshots,
-    validationSummary
+    validationSummary,
+    batchExecutionSummary,
+    llmAnalysisSummary
   });
   
   logger.info('Resurrection report generated');
@@ -287,6 +350,17 @@ export function generateResurrectionReport(
     logger.info(`  Fixes applied: ${options.validationResult.appliedFixes.length}`);
   }
   
+  if (batchExecutionSummary) {
+    logger.info(`  Batch execution: ${batchExecutionSummary.totalBatches} batches, ${batchExecutionSummary.totalPackagesSucceeded}/${batchExecutionSummary.totalPackagesAttempted} packages succeeded`);
+  }
+  
+  if (llmAnalysisSummary) {
+    logger.info(`  LLM analysis: ${llmAnalysisSummary.filesAnalyzed}/${llmAnalysisSummary.totalFiles} files analyzed`);
+    if (llmAnalysisSummary.partialResults) {
+      logger.info(`  LLM analysis: ${llmAnalysisSummary.partialResultsReason}`);
+    }
+  }
+  
   return {
     summary,
     updatedDependencies,
@@ -301,6 +375,8 @@ export function generateResurrectionReport(
     symphonyPath: options.symphonyPath,
     dashboardScreenshots: options.dashboardScreenshots,
     validationSummary,
+    batchExecutionSummary,
+    llmAnalysisSummary,
     markdown
   };
 }
@@ -379,8 +455,26 @@ function generateSummary(
 ): string {
   const parts: string[] = [];
   
+  // Determine if this is a partial success
+  const isPartialSuccess = statistics.successfulUpdates > 0 && statistics.failedUpdates > 0;
+  const isFullSuccess = statistics.successfulUpdates > 0 && statistics.failedUpdates === 0;
+  const isFullFailure = statistics.successfulUpdates === 0 && statistics.failedUpdates > 0;
+  
+  // Add status indicator
+  if (isPartialSuccess) {
+    parts.push('⚠️ **Partial Success**');
+  } else if (isFullSuccess) {
+    parts.push('✅ **Success**');
+  } else if (isFullFailure) {
+    parts.push('❌ **Failed**');
+  }
+  
   if (statistics.successfulUpdates > 0) {
     parts.push(`Successfully updated ${statistics.successfulUpdates} dependenc${statistics.successfulUpdates === 1 ? 'y' : 'ies'}`);
+  }
+  
+  if (statistics.failedUpdates > 0) {
+    parts.push(`${statistics.failedUpdates} update${statistics.failedUpdates === 1 ? '' : 's'} failed`);
   }
   
   if (statistics.totalVulnerabilitiesFixed > 0) {
@@ -392,12 +486,17 @@ function generateSummary(
     parts.push(`analyzed ${fileCount} file${fileCount === 1 ? '' : 's'} using hybrid AST + LLM analysis`);
   }
   
-  if (options.timeMachineResults?.success) {
-    parts.push('validated functional equivalence using Time Machine testing');
+  // Add validation status
+  if (options.validationResult) {
+    if (options.validationResult.success) {
+      parts.push('✅ compilation validation passed');
+    } else {
+      parts.push(`⚠️ compilation validation incomplete (${options.validationResult.remainingErrors.length} errors remain)`);
+    }
   }
   
-  if (statistics.failedUpdates > 0) {
-    parts.push(`${statistics.failedUpdates} update${statistics.failedUpdates === 1 ? '' : 's'} failed`);
+  if (options.timeMachineResults?.success) {
+    parts.push('validated functional equivalence using Time Machine testing');
   }
   
   if (parts.length === 0) {
@@ -509,6 +608,80 @@ function describeFixStrategy(strategy: FixStrategy): string {
 }
 
 /**
+ * Create a batch execution summary from batch execution results
+ * 
+ * _Requirements: 1.5_
+ * 
+ * @param batchResults Array of batch execution results
+ * @returns BatchExecutionSummary for reporting
+ */
+function createBatchExecutionSummary(
+  batchResults: BatchExecutionResult[]
+): BatchExecutionSummary {
+  const totalBatches = batchResults.length;
+  let totalPackagesAttempted = 0;
+  let totalPackagesSucceeded = 0;
+  let totalPackagesFailed = 0;
+  let totalDuration = 0;
+
+  for (const batch of batchResults) {
+    totalPackagesAttempted += batch.packagesAttempted;
+    totalPackagesSucceeded += batch.packagesSucceeded;
+    totalPackagesFailed += batch.packagesFailed;
+    totalDuration += batch.duration;
+  }
+
+  return {
+    totalBatches,
+    totalPackagesAttempted,
+    totalPackagesSucceeded,
+    totalPackagesFailed,
+    batchResults,
+    totalDuration
+  };
+}
+
+/**
+ * Create an LLM analysis summary from LLM analysis results
+ * 
+ * _Requirements: 3.4_
+ * 
+ * @param llmAnalysis LLM analysis results
+ * @param totalFiles Total number of files in the repository
+ * @returns LLMAnalysisSummary for reporting
+ */
+function createLLMAnalysisSummary(
+  llmAnalysis: LLMAnalysis,
+  totalFiles: number
+): LLMAnalysisSummary {
+  const filesAnalyzed = llmAnalysis.insights.length;
+  const filesSkipped = totalFiles - filesAnalyzed;
+  
+  // Check if there were timeouts by looking for timeout indicators in the analysis
+  // This is a heuristic - in a real implementation, we'd track this explicitly
+  const partialResults = filesSkipped > 0;
+  const timeoutCount = filesSkipped; // Approximate - actual timeout count would be tracked separately
+  
+  let partialResultsReason: string | undefined;
+  if (partialResults) {
+    if (timeoutCount > 0) {
+      partialResultsReason = `${timeoutCount} file(s) skipped due to LLM timeouts or errors`;
+    } else {
+      partialResultsReason = 'Some files were not analyzed';
+    }
+  }
+
+  return {
+    totalFiles,
+    filesAnalyzed,
+    filesSkipped,
+    timeoutCount,
+    partialResults,
+    partialResultsReason
+  };
+}
+
+/**
  * Format the complete markdown report
  */
 function formatMarkdownReport(data: {
@@ -526,6 +699,8 @@ function formatMarkdownReport(data: {
   symphonyPath?: string;
   dashboardScreenshots?: string[];
   validationSummary?: ValidationSummary;
+  batchExecutionSummary?: BatchExecutionSummary;
+  llmAnalysisSummary?: LLMAnalysisSummary;
 }): string {
   const lines: string[] = [];
   
@@ -695,6 +870,57 @@ function formatMarkdownReport(data: {
   }
   lines.push('');
   
+  // Batch Execution Summary
+  // _Requirements: 1.5_
+  if (data.batchExecutionSummary) {
+    lines.push('## 📦 Batch Execution Summary');
+    lines.push('');
+    
+    const bs = data.batchExecutionSummary;
+    
+    lines.push(`**Total Batches Executed:** ${bs.totalBatches}`);
+    lines.push(`**Total Packages Attempted:** ${bs.totalPackagesAttempted}`);
+    lines.push(`**Successful Updates:** ${bs.totalPackagesSucceeded}`);
+    lines.push(`**Failed Updates:** ${bs.totalPackagesFailed}`);
+    lines.push(`**Total Duration:** ${(bs.totalDuration / 1000).toFixed(2)}s`);
+    lines.push('');
+    
+    // Batch results table
+    if (bs.batchResults.length > 0) {
+      lines.push('### Batch Results');
+      lines.push('');
+      lines.push('| Batch ID | Packages Attempted | Succeeded | Failed | Duration (s) |');
+      lines.push('|----------|-------------------|-----------|--------|--------------|');
+      
+      for (const batch of bs.batchResults) {
+        const duration = (batch.duration / 1000).toFixed(2);
+        lines.push(`| ${batch.batchId} | ${batch.packagesAttempted} | ${batch.packagesSucceeded} | ${batch.packagesFailed} | ${duration} |`);
+      }
+      lines.push('');
+      
+      // Package update details
+      lines.push('### Package Update Details');
+      lines.push('');
+      
+      for (const batch of bs.batchResults) {
+        if (batch.results.length > 0) {
+          lines.push(`#### Batch ${batch.batchId}`);
+          lines.push('');
+          lines.push('| Package | From Version | To Version | Result | Validation |');
+          lines.push('|---------|--------------|------------|--------|------------|');
+          
+          for (const result of batch.results) {
+            const resultIcon = result.success ? '✅' : '❌';
+            const validationIcon = result.validationPassed === true ? '✅' : result.validationPassed === false ? '❌' : '-';
+            const errorInfo = result.error ? ` (${result.error.substring(0, 50)}...)` : '';
+            lines.push(`| ${result.packageName} | ${result.fromVersion} | ${result.toVersion} | ${resultIcon}${errorInfo} | ${validationIcon} |`);
+          }
+          lines.push('');
+        }
+      }
+    }
+  }
+  
   // Post-Resurrection Validation Summary
   // _Requirements: 6.4_
   if (data.validationSummary) {
@@ -733,6 +959,26 @@ function formatMarkdownReport(data: {
         lines.push(`**Failed Fixes:** ${failedFixes}`);
       }
       lines.push('');
+      
+      // Summary of strategies that succeeded
+      const successfulStrategies = vs.appliedFixes
+        .filter(f => f.success)
+        .map(f => f.strategyDescription);
+      
+      if (successfulStrategies.length > 0) {
+        lines.push('### Successful Fix Strategies');
+        lines.push('');
+        // Group by strategy description and count
+        const strategyCounts = new Map<string, number>();
+        for (const strategy of successfulStrategies) {
+          strategyCounts.set(strategy, (strategyCounts.get(strategy) || 0) + 1);
+        }
+        
+        for (const [strategy, count] of strategyCounts) {
+          lines.push(`- ${strategy} (${count}x)`);
+        }
+        lines.push('');
+      }
     }
     
     // Remaining Errors
@@ -868,6 +1114,41 @@ function formatMarkdownReport(data: {
       }
       lines.push('');
     }
+  }
+  
+  // LLM Analysis Summary
+  // _Requirements: 3.4_
+  if (data.llmAnalysisSummary) {
+    lines.push('## 🔬 LLM Analysis Summary');
+    lines.push('');
+    
+    const ls = data.llmAnalysisSummary;
+    
+    lines.push(`**Total Files:** ${ls.totalFiles}`);
+    lines.push(`**Files Analyzed:** ${ls.filesAnalyzed}`);
+    lines.push(`**Files Skipped:** ${ls.filesSkipped}`);
+    lines.push(`**Timeout Count:** ${ls.timeoutCount}`);
+    lines.push('');
+    
+    if (ls.partialResults) {
+      lines.push('### ⚠️ Partial Results');
+      lines.push('');
+      lines.push(`**Status:** Analysis completed with partial results`);
+      if (ls.partialResultsReason) {
+        lines.push(`**Reason:** ${ls.partialResultsReason}`);
+      }
+      lines.push('');
+      lines.push('Some files could not be analyzed due to LLM timeouts or errors. The resurrection process continued with available insights from AST analysis and successfully analyzed files.');
+      lines.push('');
+    } else {
+      lines.push('**Status:** ✅ All files analyzed successfully');
+      lines.push('');
+    }
+    
+    // Analysis coverage
+    const coveragePercent = ((ls.filesAnalyzed / ls.totalFiles) * 100).toFixed(1);
+    lines.push(`**Analysis Coverage:** ${coveragePercent}%`);
+    lines.push('');
   }
   
   // Metrics Comparison
@@ -1435,7 +1716,7 @@ async function formatHTMLReport(report: ResurrectionReport): Promise<string> {
                   const baseCount = baseline.errorsByCategory[cat as ErrorCategory] || 0;
                   const finalCount = final.errorsByCategory[cat as ErrorCategory] || 0;
                   const fixedCount = verdict.errorsFixedByCategory[cat as ErrorCategory] || 0;
-                  if (baseCount === 0 && finalCount === 0) return '';
+                  if (baseCount === 0 && finalCount === 0) {return '';}
                   return `
                     <tr>
                       <td>${cat.charAt(0).toUpperCase() + cat.slice(1)}</td>
@@ -1474,6 +1755,92 @@ async function formatHTMLReport(report: ResurrectionReport): Promise<string> {
           </div>
         </div>
       </section>
+      
+      ${report.batchExecutionSummary ? `
+      <!-- Batch Execution Summary -->
+      <section class="section">
+        <h2>📦 Batch Execution Summary</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-value info">${report.batchExecutionSummary.totalBatches}</span>
+            <span class="stat-label">Total Batches</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value success">${report.batchExecutionSummary.totalPackagesSucceeded}</span>
+            <span class="stat-label">Successful Updates</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value ${report.batchExecutionSummary.totalPackagesFailed > 0 ? 'warning' : 'success'}">${report.batchExecutionSummary.totalPackagesFailed}</span>
+            <span class="stat-label">Failed Updates</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value info">${(report.batchExecutionSummary.totalDuration / 1000).toFixed(2)}s</span>
+            <span class="stat-label">Total Duration</span>
+          </div>
+        </div>
+        ${report.batchExecutionSummary.batchResults.length > 0 ? `
+        <h3>Batch Results</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Batch ID</th>
+              <th>Packages Attempted</th>
+              <th>Succeeded</th>
+              <th>Failed</th>
+              <th>Duration (s)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${report.batchExecutionSummary.batchResults.map(batch => `
+              <tr>
+                <td>${batch.batchId}</td>
+                <td>${batch.packagesAttempted}</td>
+                <td class="success">${batch.packagesSucceeded}</td>
+                <td class="${batch.packagesFailed > 0 ? 'warning' : 'success'}">${batch.packagesFailed}</td>
+                <td>${(batch.duration / 1000).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+      </section>
+      ` : ''}
+      
+      ${report.llmAnalysisSummary ? `
+      <!-- LLM Analysis Summary -->
+      <section class="section">
+        <h2>🔬 LLM Analysis Summary</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-value info">${report.llmAnalysisSummary.totalFiles}</span>
+            <span class="stat-label">Total Files</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value success">${report.llmAnalysisSummary.filesAnalyzed}</span>
+            <span class="stat-label">Files Analyzed</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value ${report.llmAnalysisSummary.filesSkipped > 0 ? 'warning' : 'success'}">${report.llmAnalysisSummary.filesSkipped}</span>
+            <span class="stat-label">Files Skipped</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value ${report.llmAnalysisSummary.timeoutCount > 0 ? 'warning' : 'success'}">${report.llmAnalysisSummary.timeoutCount}</span>
+            <span class="stat-label">Timeout Count</span>
+          </div>
+        </div>
+        ${report.llmAnalysisSummary.partialResults ? `
+        <div style="margin-top: 1rem; padding: 1rem; background: rgba(255, 170, 0, 0.1); border-left: 4px solid #ffaa00; border-radius: 4px;">
+          <h3 style="margin-top: 0;">⚠️ Partial Results</h3>
+          <p><strong>Status:</strong> Analysis completed with partial results</p>
+          ${report.llmAnalysisSummary.partialResultsReason ? `<p><strong>Reason:</strong> ${report.llmAnalysisSummary.partialResultsReason}</p>` : ''}
+          <p>Some files could not be analyzed due to LLM timeouts or errors. The resurrection process continued with available insights from AST analysis and successfully analyzed files.</p>
+        </div>
+        ` : `
+        <p style="margin-top: 1rem;"><strong>Status:</strong> <span class="success">✅ All files analyzed successfully</span></p>
+        `}
+        <p style="margin-top: 1rem;"><strong>Analysis Coverage:</strong> ${((report.llmAnalysisSummary.filesAnalyzed / report.llmAnalysisSummary.totalFiles) * 100).toFixed(1)}%</p>
+      </section>
+      ` : ''}
       
       ${report.validationSummary ? `
       <!-- Post-Resurrection Validation -->

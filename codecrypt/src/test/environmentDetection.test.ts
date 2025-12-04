@@ -11,6 +11,7 @@ import {
   validateNodeVersion,
   getNodeDockerImage,
   getMajorVersion,
+  detectBuildConfiguration,
 } from '../services/environmentDetection';
 
 suite('Environment Detection Tests', () => {
@@ -192,5 +193,249 @@ jobs:
 
     // Should fall back to other methods or default
     assert.ok(result.source !== 'package.json');
+  });
+
+  // Build Configuration Detection Tests
+  test('should detect build script from package.json', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'webpack --mode production',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'webpack');
+  });
+
+  test('should detect compile script from package.json', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        compile: 'tsc',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run compile');
+    assert.strictEqual(result.buildTool, 'tsc');
+  });
+
+  test('should detect prepare script from package.json', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        prepare: 'vite build',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run prepare');
+    assert.strictEqual(result.buildTool, 'vite');
+  });
+
+  test('should detect prepublish script from package.json', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        prepublish: 'rollup -c',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run prepublish');
+    assert.strictEqual(result.buildTool, 'rollup');
+  });
+
+  test('should detect webpack.config.js', async () => {
+    await fs.writeFile(path.join(tempDir, 'webpack.config.js'), 'module.exports = {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'webpack');
+    assert.strictEqual(result.requiresCompilation, true);
+  });
+
+  test('should detect vite.config.js', async () => {
+    await fs.writeFile(path.join(tempDir, 'vite.config.js'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'vite');
+    assert.strictEqual(result.requiresCompilation, true);
+  });
+
+  test('should detect gulpfile.js', async () => {
+    await fs.writeFile(path.join(tempDir, 'gulpfile.js'), 'exports.default = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'gulp');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx gulp');
+  });
+
+  test('should detect Gruntfile.js', async () => {
+    await fs.writeFile(path.join(tempDir, 'Gruntfile.js'), 'module.exports = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'grunt');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx grunt');
+  });
+
+  test('should detect tsconfig.json and mark as requiring compilation', async () => {
+    await fs.writeFile(path.join(tempDir, 'tsconfig.json'), '{}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'tsc');
+    assert.strictEqual(result.requiresCompilation, true);
+  });
+
+  test('should detect TypeScript dependency and mark as requiring compilation', async () => {
+    const packageJson = {
+      name: 'test-package',
+      devDependencies: {
+        typescript: '^5.0.0',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.requiresCompilation, true);
+    assert.strictEqual(result.buildTool, 'tsc');
+  });
+
+  test('should return no build configuration when nothing is found', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, false);
+    assert.strictEqual(result.buildCommand, null);
+    assert.strictEqual(result.buildTool, null);
+    assert.strictEqual(result.requiresCompilation, false);
+  });
+
+  test('should prioritize build script over config files', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'vite build',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'webpack.config.js'), 'module.exports = {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'vite'); // From script, not webpack config
+  });
+
+  test('should handle malformed package.json gracefully', async () => {
+    await fs.writeFile(path.join(tempDir, 'package.json'), 'invalid json');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    // Should not throw, just return empty config
+    assert.strictEqual(result.hasBuildScript, false);
+  });
+
+  test('should detect multiple build tools and use first found', async () => {
+    await fs.writeFile(path.join(tempDir, 'webpack.config.js'), 'module.exports = {}');
+    await fs.writeFile(path.join(tempDir, 'vite.config.js'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    // Should detect webpack first (based on file order)
+    assert.strictEqual(result.buildTool, 'webpack');
+  });
+
+  test('should detect esbuild from package.json script', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'esbuild src/index.ts --bundle',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildTool, 'esbuild');
+  });
+
+  test('should detect parcel from package.json script', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'parcel build src/index.html',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildTool, 'parcel');
   });
 });

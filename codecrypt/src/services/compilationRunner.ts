@@ -17,6 +17,7 @@ import {
   PostResurrectionCompilationProof,
   PackageManager
 } from '../types';
+import { detectBuildConfiguration } from './environmentDetection';
 
 /** Default timeout for compilation (5 minutes) */
 const DEFAULT_TIMEOUT = 300000;
@@ -35,6 +36,22 @@ export class CompilationRunner implements ICompilationRunner {
   async compile(repoPath: string, options: CompileOptions): Promise<PostResurrectionCompilationResult> {
     const { packageManager, buildCommand, timeout = DEFAULT_TIMEOUT } = options;
     const startTime = Date.now();
+
+    // Check if the project has a build script
+    const buildConfig = await detectBuildConfiguration(repoPath);
+    
+    if (!buildConfig.hasBuildScript) {
+      // No build script found - return not_applicable status
+      const duration = Date.now() - startTime;
+      return {
+        success: true,
+        compilationStatus: 'not_applicable',
+        exitCode: 0,
+        stdout: 'No build script detected. Compilation not required.',
+        stderr: '',
+        duration
+      };
+    }
 
     return new Promise((resolve) => {
       // Build the full command based on package manager
@@ -78,14 +95,17 @@ export class CompilationRunner implements ICompilationRunner {
         if (timedOut) {
           resolve({
             success: false,
+            compilationStatus: 'failed',
             exitCode: -1,
             stdout,
             stderr: stderr + '\n[TIMEOUT] Compilation timed out after ' + timeout + 'ms',
             duration
           });
         } else {
+          const success = code === 0;
           resolve({
-            success: code === 0,
+            success,
+            compilationStatus: success ? 'passed' : 'failed',
             exitCode: code ?? 1,
             stdout,
             stderr,
@@ -99,6 +119,7 @@ export class CompilationRunner implements ICompilationRunner {
         const duration = Date.now() - startTime;
         resolve({
           success: false,
+          compilationStatus: 'failed',
           exitCode: -1,
           stdout,
           stderr: stderr + '\n[ERROR] ' + error.message,
@@ -134,13 +155,13 @@ export class CompilationRunner implements ICompilationRunner {
    * Detect the build command from package.json
    * 
    * @param packageJson - Parsed package.json object
-   * @returns The detected build command or 'build' as default
+   * @returns The detected build command, 'test' if available, or null if no scripts
    */
-  detectBuildCommand(packageJson: Record<string, unknown>): string {
+  detectBuildCommand(packageJson: Record<string, unknown>): string | null {
     const scripts = packageJson.scripts as Record<string, string> | undefined;
     
-    if (!scripts) {
-      return 'build';
+    if (!scripts || Object.keys(scripts).length === 0) {
+      return null; // No scripts available
     }
 
     // Priority order for build commands
@@ -150,7 +171,8 @@ export class CompilationRunner implements ICompilationRunner {
       'tsc',
       'build:prod',
       'build:production',
-      'dist'
+      'dist',
+      'test' // Fallback to test if no build command
     ];
 
     for (const cmd of buildCommandPriority) {
@@ -159,8 +181,8 @@ export class CompilationRunner implements ICompilationRunner {
       }
     }
 
-    // If no standard build command found, return 'build' as default
-    return 'build';
+    // If no standard build command found, return null
+    return null;
   }
 
   /**

@@ -271,7 +271,7 @@ export class ErrorAnalyzer implements IErrorAnalyzer {
    */
   private extractFromModuleNotFound(message: string): PackageInfo | null {
     const match = EXTENDED_ERROR_PATTERNS.packageFromModuleNotFound.exec(message);
-    if (!match) return null;
+    if (!match) {return null;}
     
     const modulePath = match[1];
     

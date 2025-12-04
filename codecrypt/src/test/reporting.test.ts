@@ -1607,4 +1607,341 @@ suite('Reporting Service', () => {
       assert.ok(report.markdown.includes('10'));
     });
   });
+
+  suite('Batch Execution Summary', () => {
+    test('should include batch execution summary in report', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const batchExecutionResults = [
+        {
+          batchId: 'batch-1',
+          packagesAttempted: 3,
+          packagesSucceeded: 2,
+          packagesFailed: 1,
+          results: [
+            {
+              packageName: 'express',
+              fromVersion: '3.0.0',
+              toVersion: '4.18.0',
+              success: true,
+              validationPassed: true
+            },
+            {
+              packageName: 'lodash',
+              fromVersion: '4.0.0',
+              toVersion: '4.17.21',
+              success: true,
+              validationPassed: true
+            },
+            {
+              packageName: 'axios',
+              fromVersion: '0.21.0',
+              toVersion: '1.2.0',
+              success: false,
+              error: 'npm install failed'
+            }
+          ],
+          duration: 45000
+        },
+        {
+          batchId: 'batch-2',
+          packagesAttempted: 2,
+          packagesSucceeded: 2,
+          packagesFailed: 0,
+          results: [
+            {
+              packageName: 'react',
+              fromVersion: '16.0.0',
+              toVersion: '18.2.0',
+              success: true,
+              validationPassed: true
+            },
+            {
+              packageName: 'react-dom',
+              fromVersion: '16.0.0',
+              toVersion: '18.2.0',
+              success: true,
+              validationPassed: false
+            }
+          ],
+          duration: 30000
+        }
+      ];
+
+      const options: ReportGenerationOptions = {
+        batchExecutionResults
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      // Verify batch execution summary section exists
+      assert.ok(report.markdown.includes('## 📦 Batch Execution Summary'));
+      assert.ok(report.markdown.includes('**Total Batches Executed:** 2'));
+      assert.ok(report.markdown.includes('**Total Packages Attempted:** 5'));
+      assert.ok(report.markdown.includes('**Successful Updates:** 4'));
+      assert.ok(report.markdown.includes('**Failed Updates:** 1'));
+      assert.ok(report.markdown.includes('**Total Duration:** 75.00s'));
+
+      // Verify batch results table
+      assert.ok(report.markdown.includes('### Batch Results'));
+      assert.ok(report.markdown.includes('| Batch ID | Packages Attempted | Succeeded | Failed | Duration (s) |'));
+      assert.ok(report.markdown.includes('| batch-1 | 3 | 2 | 1 | 45.00 |'));
+      assert.ok(report.markdown.includes('| batch-2 | 2 | 2 | 0 | 30.00 |'));
+
+      // Verify package update details
+      assert.ok(report.markdown.includes('### Package Update Details'));
+      assert.ok(report.markdown.includes('#### Batch batch-1'));
+      assert.ok(report.markdown.includes('| express | 3.0.0 | 4.18.0 | ✅ | ✅ |'));
+      assert.ok(report.markdown.includes('| lodash | 4.0.0 | 4.17.21 | ✅ | ✅ |'));
+      assert.ok(report.markdown.includes('| axios | 0.21.0 | 1.2.0 | ❌'));
+
+      // Verify batch execution summary object
+      assert.ok(report.batchExecutionSummary);
+      assert.strictEqual(report.batchExecutionSummary.totalBatches, 2);
+      assert.strictEqual(report.batchExecutionSummary.totalPackagesAttempted, 5);
+      assert.strictEqual(report.batchExecutionSummary.totalPackagesSucceeded, 4);
+      assert.strictEqual(report.batchExecutionSummary.totalPackagesFailed, 1);
+      assert.strictEqual(report.batchExecutionSummary.totalDuration, 75000);
+    });
+
+    test('should handle empty batch execution results', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const options: ReportGenerationOptions = {
+        batchExecutionResults: []
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      // Should not include batch execution summary section
+      assert.ok(!report.markdown.includes('## 📦 Batch Execution Summary'));
+      assert.ok(!report.batchExecutionSummary);
+    });
+  });
+
+  suite('LLM Analysis Summary', () => {
+    test('should include LLM analysis summary in report', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const llmAnalysis = {
+        insights: [
+          {
+            filePath: 'src/index.ts',
+            developerIntent: 'Main entry point',
+            domainConcepts: ['authentication'],
+            idiomaticPatterns: ['async/await'],
+            antiPatterns: ['callback hell'],
+            modernizationSuggestions: ['Use async/await'],
+            confidence: 0.9
+          },
+          {
+            filePath: 'src/utils.ts',
+            developerIntent: 'Utility functions',
+            domainConcepts: ['data processing'],
+            idiomaticPatterns: ['functional programming'],
+            antiPatterns: ['var declarations'],
+            modernizationSuggestions: ['Use ES6+ syntax'],
+            confidence: 0.85
+          }
+        ],
+        projectIntent: 'A web server',
+        keyDomainConcepts: ['authentication', 'data processing'],
+        modernizationStrategy: 'Update to modern patterns',
+        analyzedAt: new Date()
+      };
+
+      const hybridAnalysis: HybridAnalysis = {
+        astAnalysis: {
+          files: [
+            {
+              filePath: 'src/index.ts',
+              fileType: 'ts',
+              linesOfCode: 150,
+              structure: { classes: [], functions: [], imports: [], exports: [] },
+              complexity: { cyclomatic: 15, decisionPoints: 8 },
+              callGraph: []
+            },
+            {
+              filePath: 'src/utils.ts',
+              fileType: 'ts',
+              linesOfCode: 200,
+              structure: { classes: [], functions: [], imports: [], exports: [] },
+              complexity: { cyclomatic: 20, decisionPoints: 10 },
+              callGraph: []
+            },
+            {
+              filePath: 'src/config.ts',
+              fileType: 'ts',
+              linesOfCode: 50,
+              structure: { classes: [], functions: [], imports: [], exports: [] },
+              complexity: { cyclomatic: 5, decisionPoints: 2 },
+              callGraph: []
+            }
+          ],
+          totalLOC: 400,
+          averageComplexity: 13.33,
+          dependencyGraph: [],
+          analyzedAt: new Date()
+        },
+        llmAnalysis,
+        combinedInsights: {
+          priorityFiles: [],
+          refactoringOpportunities: [],
+          recommendations: []
+        },
+        analyzedAt: new Date()
+      };
+
+      const options: ReportGenerationOptions = {
+        hybridAnalysis,
+        llmAnalysis
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      // Verify LLM analysis summary section exists
+      assert.ok(report.markdown.includes('## 🔬 LLM Analysis Summary'));
+      assert.ok(report.markdown.includes('**Total Files:** 3'));
+      assert.ok(report.markdown.includes('**Files Analyzed:** 2'));
+      assert.ok(report.markdown.includes('**Files Skipped:** 1'));
+      assert.ok(report.markdown.includes('**Timeout Count:** 1'));
+      assert.ok(report.markdown.includes('**Analysis Coverage:** 66.7%'));
+
+      // Verify partial results warning
+      assert.ok(report.markdown.includes('### ⚠️ Partial Results'));
+      assert.ok(report.markdown.includes('**Status:** Analysis completed with partial results'));
+      assert.ok(report.markdown.includes('1 file(s) skipped due to LLM timeouts or errors'));
+
+      // Verify LLM analysis summary object
+      assert.ok(report.llmAnalysisSummary);
+      assert.strictEqual(report.llmAnalysisSummary.totalFiles, 3);
+      assert.strictEqual(report.llmAnalysisSummary.filesAnalyzed, 2);
+      assert.strictEqual(report.llmAnalysisSummary.filesSkipped, 1);
+      assert.strictEqual(report.llmAnalysisSummary.timeoutCount, 1);
+      assert.strictEqual(report.llmAnalysisSummary.partialResults, true);
+    });
+
+    test('should show success status when all files analyzed', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const llmAnalysis = {
+        insights: [
+          {
+            filePath: 'src/index.ts',
+            developerIntent: 'Main entry point',
+            domainConcepts: ['authentication'],
+            idiomaticPatterns: ['async/await'],
+            antiPatterns: ['callback hell'],
+            modernizationSuggestions: ['Use async/await'],
+            confidence: 0.9
+          },
+          {
+            filePath: 'src/utils.ts',
+            developerIntent: 'Utility functions',
+            domainConcepts: ['data processing'],
+            idiomaticPatterns: ['functional programming'],
+            antiPatterns: ['var declarations'],
+            modernizationSuggestions: ['Use ES6+ syntax'],
+            confidence: 0.85
+          }
+        ],
+        projectIntent: 'A web server',
+        keyDomainConcepts: ['authentication', 'data processing'],
+        modernizationStrategy: 'Update to modern patterns',
+        analyzedAt: new Date()
+      };
+
+      const hybridAnalysis: HybridAnalysis = {
+        astAnalysis: {
+          files: [
+            {
+              filePath: 'src/index.ts',
+              fileType: 'ts',
+              linesOfCode: 150,
+              structure: { classes: [], functions: [], imports: [], exports: [] },
+              complexity: { cyclomatic: 15, decisionPoints: 8 },
+              callGraph: []
+            },
+            {
+              filePath: 'src/utils.ts',
+              fileType: 'ts',
+              linesOfCode: 200,
+              structure: { classes: [], functions: [], imports: [], exports: [] },
+              complexity: { cyclomatic: 20, decisionPoints: 10 },
+              callGraph: []
+            }
+          ],
+          totalLOC: 350,
+          averageComplexity: 17.5,
+          dependencyGraph: [],
+          analyzedAt: new Date()
+        },
+        llmAnalysis,
+        combinedInsights: {
+          priorityFiles: [],
+          refactoringOpportunities: [],
+          recommendations: []
+        },
+        analyzedAt: new Date()
+      };
+
+      const options: ReportGenerationOptions = {
+        hybridAnalysis,
+        llmAnalysis
+      };
+
+      const report = generateResurrectionReport(context, options);
+
+      // Verify success status
+      assert.ok(report.markdown.includes('**Status:** ✅ All files analyzed successfully'));
+      assert.ok(report.markdown.includes('**Analysis Coverage:** 100.0%'));
+
+      // Should not have partial results warning
+      assert.ok(!report.markdown.includes('### ⚠️ Partial Results'));
+
+      // Verify LLM analysis summary object
+      assert.ok(report.llmAnalysisSummary);
+      assert.strictEqual(report.llmAnalysisSummary.totalFiles, 2);
+      assert.strictEqual(report.llmAnalysisSummary.filesAnalyzed, 2);
+      assert.strictEqual(report.llmAnalysisSummary.filesSkipped, 0);
+      assert.strictEqual(report.llmAnalysisSummary.partialResults, false);
+    });
+
+    test('should handle missing LLM analysis', () => {
+      const context: ResurrectionContext = {
+        repoUrl: 'https://github.com/test/repo',
+        isDead: true,
+        dependencies: [],
+        transformationLog: []
+      };
+
+      const options: ReportGenerationOptions = {};
+
+      const report = generateResurrectionReport(context, options);
+
+      // Should not include LLM analysis summary section
+      assert.ok(!report.markdown.includes('## 🔬 LLM Analysis Summary'));
+      assert.ok(!report.llmAnalysisSummary);
+    });
+  });
 });

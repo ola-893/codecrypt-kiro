@@ -6,6 +6,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getLogger } from '../utils/logger';
+import { BuildConfiguration } from '../types';
 
 const logger = getLogger();
 
@@ -261,4 +262,131 @@ export function getNodeDockerImage(nodeVersion: string): string {
 export function getMajorVersion(version: string): number {
   const match = version.match(/^(\d+)/);
   return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * Detect build configuration for a repository
+ * Checks for build scripts in package.json and task runner files
+ */
+export async function detectBuildConfiguration(repoPath: string): Promise<BuildConfiguration> {
+  logger.info('Detecting build configuration...');
+
+  let hasBuildScript = false;
+  let buildCommand: string | null = null;
+  let buildTool: string | null = null;
+  let requiresCompilation = false;
+
+  try {
+    // Check package.json for build scripts
+    const packageJsonPath = path.join(repoPath, 'package.json');
+    try {
+      const content = await fs.readFile(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(content);
+
+      if (packageJson.scripts) {
+        const scripts = packageJson.scripts;
+
+        // Check for common build script names
+        const buildScriptNames = ['build', 'compile', 'prepare', 'prepublish', 'prepublishOnly'];
+        
+        for (const scriptName of buildScriptNames) {
+          if (scripts[scriptName]) {
+            hasBuildScript = true;
+            buildCommand = `npm run ${scriptName}`;
+            
+            // Detect build tool from script content
+            const scriptContent = scripts[scriptName];
+            if (scriptContent.includes('webpack')) {
+              buildTool = 'webpack';
+            } else if (scriptContent.includes('vite')) {
+              buildTool = 'vite';
+            } else if (scriptContent.includes('tsc')) {
+              buildTool = 'tsc';
+            } else if (scriptContent.includes('rollup')) {
+              buildTool = 'rollup';
+            } else if (scriptContent.includes('esbuild')) {
+              buildTool = 'esbuild';
+            } else if (scriptContent.includes('parcel')) {
+              buildTool = 'parcel';
+            }
+
+            logger.info(`Found build script: ${scriptName} -> ${scriptContent}`);
+            break;
+          }
+        }
+      }
+
+      // Check if TypeScript is present (requires compilation)
+      // This check is outside the scripts block so it works even without scripts
+      if (packageJson.devDependencies?.typescript || packageJson.dependencies?.typescript) {
+        requiresCompilation = true;
+        if (!buildTool) {
+          buildTool = 'tsc';
+        }
+        // If TypeScript is present but no build script, infer one
+        if (!hasBuildScript) {
+          hasBuildScript = true;
+          buildCommand = 'npx tsc';
+        }
+      }
+    } catch (error) {
+      logger.debug('Could not parse package.json for build scripts', error);
+    }
+
+    // Check for task runner configuration files
+    const taskRunnerFiles = [
+      { file: 'webpack.config.js', tool: 'webpack' },
+      { file: 'webpack.config.ts', tool: 'webpack' },
+      { file: 'vite.config.js', tool: 'vite' },
+      { file: 'vite.config.ts', tool: 'vite' },
+      { file: 'rollup.config.js', tool: 'rollup' },
+      { file: 'gulpfile.js', tool: 'gulp' },
+      { file: 'Gruntfile.js', tool: 'grunt' },
+      { file: 'tsconfig.json', tool: 'tsc' },
+    ];
+
+    for (const { file, tool } of taskRunnerFiles) {
+      try {
+        await fs.access(path.join(repoPath, file));
+        logger.info(`Found task runner file: ${file}`);
+        
+        if (!buildTool) {
+          buildTool = tool;
+        }
+        
+        // If we found a config file but no build script, mark as requiring compilation
+        if (tool === 'tsc' || tool === 'webpack' || tool === 'vite' || tool === 'rollup') {
+          requiresCompilation = true;
+        }
+        
+        // If we have a build tool but no build command, try to infer it
+        if (!hasBuildScript && (tool === 'webpack' || tool === 'vite' || tool === 'rollup')) {
+          hasBuildScript = true;
+          buildCommand = `npx ${tool} build`;
+        } else if (!hasBuildScript && tool === 'tsc') {
+          hasBuildScript = true;
+          buildCommand = 'npx tsc';
+        } else if (!hasBuildScript && (tool === 'gulp' || tool === 'grunt')) {
+          hasBuildScript = true;
+          buildCommand = `npx ${tool}`;
+        }
+      } catch (error) {
+        // File doesn't exist, continue
+      }
+    }
+
+  } catch (error) {
+    logger.error('Error detecting build configuration', error);
+  }
+
+  const config: BuildConfiguration = {
+    hasBuildScript,
+    buildCommand,
+    buildTool,
+    requiresCompilation,
+  };
+
+  logger.info(`Build configuration detected:`, config);
+
+  return config;
 }

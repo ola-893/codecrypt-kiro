@@ -11,6 +11,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { URLValidator } from './urlValidator';
+import { IURLValidator } from '../types';
 import { getLogger } from '../utils/logger';
 
 const logger = getLogger();
@@ -55,9 +56,9 @@ export interface DeadUrlHandlingSummary {
  * DeadUrlHandler class
  */
 export class DeadUrlHandler {
-  private urlValidator: URLValidator;
+  private urlValidator: IURLValidator;
 
-  constructor(urlValidator?: URLValidator) {
+  constructor(urlValidator?: IURLValidator) {
     this.urlValidator = urlValidator || new URLValidator();
   }
 

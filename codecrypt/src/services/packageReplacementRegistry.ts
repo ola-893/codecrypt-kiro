@@ -13,6 +13,9 @@ import {
   ReplacementRegistrySchema,
   IPackageReplacementRegistry
 } from '../types';
+import { Logger } from '../utils/logger';
+
+const logger = new Logger('PackageReplacementRegistry');
 
 /**
  * Default registry content with common package replacements
@@ -86,12 +89,12 @@ export class PackageReplacementRegistry implements IPackageReplacementRegistry {
       if (this.validateSchema(parsed)) {
         this.registry = parsed;
       } else {
-        console.warn('Invalid registry schema, using default registry');
+        logger.warn('Invalid registry schema, using default registry');
         this.registry = { ...DEFAULT_REGISTRY };
       }
     } catch (error) {
       // File doesn't exist or can't be read - use default
-      console.log('Registry file not found, using default registry');
+      logger.info('Registry file not found, using default registry');
       this.registry = { ...DEFAULT_REGISTRY };
     }
   }

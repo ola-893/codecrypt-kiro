@@ -63,6 +63,15 @@ suite('SmartDependencyUpdater Integration Tests', () => {
       { name: 'dead-url-pkg', version: 'http://dead.url/pkg.git', reason: 'dead_url' },
     ]);
 
+    // Stub URLValidator methods
+    urlValidatorStub.validate.resolves({
+      url: 'http://dead.url/pkg.git',
+      isValid: false,
+      error: 'URL not accessible'
+    });
+    urlValidatorStub.extractPackageFromUrl.returns('dead-url-pkg');
+    urlValidatorStub.findNpmAlternative.resolves(null);
+
     // Stub PackageReplacementRegistry methods
     replacementRegistryStub.lookup.withArgs('old-pkg').returns({
         oldName: 'old-pkg',

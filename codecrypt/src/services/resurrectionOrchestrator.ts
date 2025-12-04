@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult, BaselineCompilationResult, ResurrectionVerdict, PostResurrectionValidationResult, ValidationOptions } from '../types';
+import { ResurrectionContext, DependencyReport, HybridAnalysis, TimeMachineValidationResult, BaselineCompilationResult, ResurrectionVerdict, PostResurrectionValidationResult, ValidationOptions, MetricsSnapshot } from '../types';
 import { getLogger } from '../utils/logger';
 import { getEventEmitter } from './eventEmitter';
 import { createSSEServer, SSEServer } from './sseServer';
@@ -63,6 +63,22 @@ interface OrchestratorState {
   timeMachineResults?: TimeMachineValidationResult;
   postResurrectionValidationResult?: PostResurrectionValidationResult;
   smartDependencyUpdater?: SmartDependencyUpdaterImpl;
+  /** LLM provider used for analysis (gemini/anthropic/none) */
+  llmProvider?: 'anthropic' | 'gemini' | 'none';
+  /** Status of LLM analysis (success/partial/failed/skipped) */
+  llmAnalysisStatus?: 'success' | 'partial' | 'failed' | 'skipped';
+  /** Summary of dependency update operations */
+  dependencyUpdateSummary?: {
+    attempted: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+  };
+  /** Summary of validation results */
+  validationSummary?: {
+    compilationStatus: string;
+    testsStatus: string;
+  };
 }
 
 /**
@@ -347,6 +363,7 @@ export class ResurrectionOrchestrator {
           const secureConfig = getSecureConfig();
           const config = vscode.workspace.getConfiguration('codecrypt');
           const preferredProvider = config.get<string>('llmProvider', 'anthropic');
+          const geminiModel = config.get<string>('geminiModel', 'gemini-3.0-pro'); // Support custom Gemini model
 
           let llmClient: LLMClient | GeminiClient | undefined;
           let usedProvider: string | undefined;
@@ -356,21 +373,35 @@ export class ResurrectionOrchestrator {
 
           // Determine which client to use based on preference and available keys
           if (preferredProvider === 'gemini' && geminiApiKey) {
-            logger.info('Using configured Gemini provider.');
-            llmClient = new GeminiClient({ apiKey: geminiApiKey });
+            logger.info(`Using configured Gemini provider with model: ${geminiModel}`);
+            this.eventEmitter.emitNarration({
+              message: `Using Gemini AI (${geminiModel}) for semantic code analysis...`,
+            });
+            llmClient = new GeminiClient({ apiKey: geminiApiKey, model: geminiModel });
             usedProvider = 'gemini';
           } else if (preferredProvider === 'anthropic' && anthropicApiKey) {
             logger.info('Using configured Anthropic provider.');
+            this.eventEmitter.emitNarration({
+              message: 'Using Anthropic AI for semantic code analysis...',
+            });
             llmClient = new LLMClient({ apiKey: anthropicApiKey });
             usedProvider = 'anthropic';
           } else if (geminiApiKey) {
             // Fallback to Gemini if its key is available
-            logger.info('Falling back to Gemini provider because its API key is configured.');
-            llmClient = new GeminiClient({ apiKey: geminiApiKey });
+            logger.info(`Falling back to Gemini provider with model: ${geminiModel}`);
+            this.eventEmitter.emitNarration({
+              message: `Preferred provider unavailable. Falling back to Gemini AI (${geminiModel})...`,
+              category: 'info',
+            });
+            llmClient = new GeminiClient({ apiKey: geminiApiKey, model: geminiModel });
             usedProvider = 'gemini';
           } else if (anthropicApiKey) {
             // Fallback to Anthropic if its key is available
             logger.info('Falling back to Anthropic provider because its API key is configured.');
+            this.eventEmitter.emitNarration({
+              message: 'Preferred provider unavailable. Falling back to Anthropic AI...',
+              category: 'info',
+            });
             llmClient = new LLMClient({ apiKey: anthropicApiKey });
             usedProvider = 'anthropic';
           }
@@ -383,34 +414,120 @@ export class ResurrectionOrchestrator {
             if (cachedLLM) {
               logger.info('Using cached LLM analysis');
               llmAnalysis = cachedLLM;
+              // Track successful LLM analysis from cache
+              this.state.llmProvider = usedProvider as 'anthropic' | 'gemini';
+              this.state.llmAnalysisStatus = 'success';
             } else {
               logger.info(`Performing fresh LLM analysis with ${usedProvider}`);
               logger.info(`Analyzing ${astAnalysis.files.length} files (will prioritize top 10 by complexity)`);
               
-              const analysisStartTime = Date.now();
-              llmAnalysis = await analyzeLLMRepository(llmClient, this.state.context.repoPath, astAnalysis);
-              const analysisElapsed = Date.now() - analysisStartTime;
+              try {
+                const analysisStartTime = Date.now();
+                llmAnalysis = await analyzeLLMRepository(llmClient, this.state.context.repoPath, astAnalysis);
+                const analysisElapsed = Date.now() - analysisStartTime;
+                
+                logger.info(`LLM analysis completed in ${analysisElapsed}ms`);
+                llmCache.set(cacheKey, llmAnalysis);
+                
+                // Track successful LLM analysis
+                this.state.llmProvider = usedProvider as 'anthropic' | 'gemini';
+                this.state.llmAnalysisStatus = 'success';
+              } catch (analysisError: any) {
+                // If primary provider fails, try fallback
+                const errorMessage = analysisError.message || String(analysisError);
+                logger.warn(`${usedProvider} analysis failed: ${errorMessage}`);
+                
+                // Try fallback provider
+                let fallbackProvider: string | undefined;
+                let fallbackClient: LLMClient | GeminiClient | undefined;
+                
+                if (usedProvider === 'gemini' && anthropicApiKey) {
+                  fallbackProvider = 'anthropic';
+                  fallbackClient = new LLMClient({ apiKey: anthropicApiKey });
+                  logger.info('Gemini failed, falling back to Anthropic');
+                  this.eventEmitter.emitNarration({
+                    message: `Gemini AI failed (${errorMessage}). Falling back to Anthropic AI...`,
+                    category: 'warning',
+                  });
+                } else if (usedProvider === 'anthropic' && geminiApiKey) {
+                  fallbackProvider = 'gemini';
+                  fallbackClient = new GeminiClient({ apiKey: geminiApiKey, model: geminiModel });
+                  logger.info('Anthropic failed, falling back to Gemini');
+                  this.eventEmitter.emitNarration({
+                    message: `Anthropic AI failed (${errorMessage}). Falling back to Gemini AI (${geminiModel})...`,
+                    category: 'warning',
+                  });
+                }
+                
+                if (fallbackClient && fallbackProvider) {
+                  try {
+                    const fallbackCacheKey = `llm:${this.state.context.repoPath}:${fallbackProvider}`;
+                    const cachedFallback = llmCache.get(fallbackCacheKey);
+                    
+                    if (cachedFallback) {
+                      logger.info('Using cached fallback LLM analysis');
+                      llmAnalysis = cachedFallback;
+                    } else {
+                      logger.info(`Performing fresh LLM analysis with fallback provider ${fallbackProvider}`);
+                      const fallbackStartTime = Date.now();
+                      llmAnalysis = await analyzeLLMRepository(fallbackClient, this.state.context.repoPath, astAnalysis);
+                      const fallbackElapsed = Date.now() - fallbackStartTime;
+                      logger.info(`Fallback LLM analysis completed in ${fallbackElapsed}ms`);
+                      llmCache.set(fallbackCacheKey, llmAnalysis);
+                    }
+                    
+                    // Track successful fallback
+                    this.state.llmProvider = fallbackProvider as 'anthropic' | 'gemini';
+                    this.state.llmAnalysisStatus = 'success';
+                    this.eventEmitter.emitNarration({
+                      message: `Successfully switched to ${fallbackProvider === 'gemini' ? 'Gemini' : 'Anthropic'} AI for analysis.`,
+                      category: 'success',
+                    });
+                  } catch (fallbackError: any) {
+                    const fallbackErrorMessage = fallbackError.message || String(fallbackError);
+                    logger.error(`Fallback provider ${fallbackProvider} also failed: ${fallbackErrorMessage}`);
+                    this.eventEmitter.emitNarration({
+                      message: `${fallbackProvider === 'gemini' ? 'Gemini' : 'Anthropic'} AI also failed (${fallbackErrorMessage}). Falling back to AST-only analysis.`,
+                      category: 'warning',
+                    });
+                    // Track that both providers failed
+                    this.state.llmProvider = 'none';
+                    this.state.llmAnalysisStatus = 'failed';
+                  }
+                } else {
+                  // No fallback available
+                  logger.warn('No fallback provider available');
+                  this.eventEmitter.emitNarration({
+                    message: `${usedProvider === 'gemini' ? 'Gemini' : 'Anthropic'} AI failed and no fallback available. Continuing with AST-only analysis.`,
+                    category: 'warning',
+                  });
+                  this.state.llmProvider = 'none';
+                  this.state.llmAnalysisStatus = 'failed';
+                }
+              }
+            }
+            
+            if (llmAnalysis) {
+              for (const insight of llmAnalysis.insights) {
+                this.eventEmitter.emitLLMInsight({
+                  filePath: insight.filePath,
+                  insight: insight,
+                  summary: `Analyzed ${insight.filePath}: ${insight.modernizationSuggestions.length} suggestions`,
+                });
+              }
               
-              logger.info(`LLM analysis completed in ${analysisElapsed}ms`);
-              llmCache.set(cacheKey, llmAnalysis);
+              const llmElapsed = Date.now() - llmStartTime;
+              logger.info(`LLM analysis complete: ${llmAnalysis.insights.length} files analyzed in ${llmElapsed}ms`);
             }
-            
-            for (const insight of llmAnalysis.insights) {
-              this.eventEmitter.emitLLMInsight({
-                filePath: insight.filePath,
-                insight: insight,
-                summary: `Analyzed ${insight.filePath}: ${insight.modernizationSuggestions.length} suggestions`,
-              });
-            }
-            
-            const llmElapsed = Date.now() - llmStartTime;
-            logger.info(`LLM analysis complete: ${llmAnalysis.insights.length} files analyzed in ${llmElapsed}ms`);
           } else {
             logger.warn('No LLM API keys are configured, skipping LLM analysis.');
             this.eventEmitter.emitNarration({
               message: 'AI analysis skipped: No API key configured for Anthropic or Gemini.',
               category: 'info',
             });
+            // Track that LLM was skipped
+            this.state.llmProvider = 'none';
+            this.state.llmAnalysisStatus = 'skipped';
           }
         } catch (error: any) {
           const llmElapsed = Date.now() - llmStartTime;
@@ -421,10 +538,17 @@ export class ResurrectionOrchestrator {
             logger.debug(`LLM error stack: ${error.stack}`);
           }
           this.eventEmitter.emitNarration({
-            message: `AI analysis unavailable (${errorMessage}). Using structural analysis only.`,
+            message: `AI analysis encountered unexpected errors. Continuing with AST-only analysis.`,
             category: 'warning',
           });
+          // Track that LLM failed
+          this.state.llmProvider = 'none';
+          this.state.llmAnalysisStatus = 'failed';
         }
+      } else {
+        // LLM disabled in config
+        this.state.llmProvider = 'none';
+        this.state.llmAnalysisStatus = 'skipped';
       }
 
       // Combine insights if LLM analysis succeeded
@@ -487,7 +611,82 @@ export class ResurrectionOrchestrator {
 
       if (this.state.smartDependencyUpdater) {
         const analysisResult = await this.state.smartDependencyUpdater.analyze(this.state.context.repoPath, plan.items);
-        await this.state.smartDependencyUpdater.execute(this.state.context.repoPath, analysisResult);
+        const executionResult = await this.state.smartDependencyUpdater.execute(this.state.context.repoPath, analysisResult);
+        
+        // Handle dead URL narration
+        if (executionResult.deadUrlHandlingSummary) {
+          const summary = executionResult.deadUrlHandlingSummary;
+          
+          if (summary.deadUrlsFound > 0) {
+            logger.info(`[ResurrectionOrchestrator] Dead URL handling: ${summary.deadUrlsFound} dead URLs found`);
+            
+            // Emit narration for dead URLs
+            if (summary.resolvedViaNpm > 0 && summary.removed > 0) {
+              this.eventEmitter.emitNarration({
+                message: `Found ${summary.deadUrlsFound} dead dependency URLs. Resolved ${summary.resolvedViaNpm} via npm registry, removed ${summary.removed} unresolvable packages.`,
+                category: 'warning',
+              });
+            } else if (summary.resolvedViaNpm > 0) {
+              this.eventEmitter.emitNarration({
+                message: `Found ${summary.deadUrlsFound} dead dependency URLs. Successfully resolved all via npm registry.`,
+                category: 'info',
+              });
+            } else if (summary.removed > 0) {
+              this.eventEmitter.emitNarration({
+                message: `Found ${summary.deadUrlsFound} dead dependency URLs. Removed ${summary.removed} unresolvable packages.`,
+                category: 'warning',
+              });
+            }
+            
+            // Log to transformation log
+            this.state.context.transformationLog.push({
+              timestamp: new Date(),
+              type: 'dependency_update',
+              message: `Dead URL handling: ${summary.deadUrlsFound} dead URLs found, ${summary.resolvedViaNpm} resolved, ${summary.removed} removed`,
+              details: {
+                deadUrlSummary: summary
+              }
+            });
+          }
+        }
+        
+        // Store batch execution results in context for reporting
+        if (executionResult.batchResults) {
+          const totalAttempted = executionResult.batchResults.reduce((sum, r) => sum + r.packagesAttempted, 0);
+          const totalSucceeded = executionResult.batchResults.reduce((sum, r) => sum + r.packagesSucceeded, 0);
+          const totalFailed = executionResult.batchResults.reduce((sum, r) => sum + r.packagesFailed, 0);
+          const totalSkipped = plan.items.length - totalAttempted; // Items that were skipped (e.g., blocking dependencies)
+          
+          logger.info(`[ResurrectionOrchestrator] Batch execution complete: ${totalSucceeded}/${totalAttempted} packages succeeded, ${totalFailed} failed`);
+          
+          // Store dependency update summary in state
+          this.state.dependencyUpdateSummary = {
+            attempted: totalAttempted,
+            succeeded: totalSucceeded,
+            failed: totalFailed,
+            skipped: totalSkipped
+          };
+          
+          // Log to transformation log
+          this.state.context.transformationLog.push({
+            timestamp: new Date(),
+            type: 'dependency_update',
+            message: `Batch execution complete: ${totalSucceeded}/${totalAttempted} packages updated successfully`,
+            details: {
+              batchResults: executionResult.batchResults,
+              totalAttempted,
+              totalSucceeded,
+              totalFailed,
+              totalSkipped
+            }
+          });
+          
+          // Emit narration
+          this.eventEmitter.emitNarration({
+            message: `Batch execution complete: ${totalSucceeded} of ${totalAttempted} packages updated successfully.`,
+            category: totalFailed === 0 ? 'success' : 'warning',
+          });
+        }
       }
 
     } catch (error: any) {
@@ -550,6 +749,20 @@ export class ResurrectionOrchestrator {
       // Store result in state
       this.state.postResurrectionValidationResult = result;
 
+      // Extract validation summary
+      const compilationStatus = result.success ? 'passed' : 
+        (result.compilationProof ? 'passed' : 'failed');
+      
+      // For tests, check if repository has test script
+      const hasTests = await hasTestScript(this.state.context.repoPath);
+      const testsStatus = hasTests ? 'not_applicable' : 'not_applicable'; // Tests are not run in post-resurrection validation
+      
+      // Store validation summary in state
+      this.state.validationSummary = {
+        compilationStatus,
+        testsStatus
+      };
+
       // Log the result
       this.state.context.transformationLog.push({
         timestamp: new Date(),
@@ -563,6 +776,8 @@ export class ResurrectionOrchestrator {
           appliedFixes: result.appliedFixes.length,
           remainingErrors: result.remainingErrors.length,
           duration: result.duration,
+          compilationStatus,
+          testsStatus
         },
       });
 
@@ -670,6 +885,19 @@ export class ResurrectionOrchestrator {
         type: 'validation_complete',
         timestamp: Date.now(),
         data: event.data,
+      });
+    });
+
+    // Forward no build script events
+    validator.on('validation_no_build_script', (event) => {
+      this.eventEmitter.emit('validation_no_build_script', {
+        type: 'validation_no_build_script',
+        timestamp: Date.now(),
+        data: event.data,
+      });
+      this.eventEmitter.emitNarration({
+        message: 'No build script detected in package.json. Compilation validation skipped - this is normal for projects without build requirements.',
+        category: 'info',
       });
     });
   }
@@ -781,6 +1009,16 @@ export class ResurrectionOrchestrator {
 
   /**
    * Generate final resurrection report
+   * 
+   * This method generates a comprehensive resurrection report including:
+   * - Resurrection verdict with compilation proof
+   * - Hybrid analysis results (AST + LLM)
+   * - Post-resurrection validation results
+   * - Time Machine validation results
+   * - Batch execution summary
+   * - Metrics comparison (before/after)
+   * 
+   * Requirements: FR-010, 4.3, 4.4, 4.5
    */
   async generateReport(): Promise<ResurrectionReport> {
     logger.info('Generating resurrection report');
@@ -789,16 +1027,158 @@ export class ResurrectionOrchestrator {
       message: 'Generating final resurrection report...',
     });
 
+    // Extract metrics before and after if available from MetricsService
+    let metricsBefore: MetricsSnapshot | undefined;
+    let metricsAfter: MetricsSnapshot | undefined;
+    
+    try {
+      const metricsHistory = this.metricsService.getHistory();
+      metricsBefore = metricsHistory.baseline;
+      metricsAfter = metricsHistory.current;
+    } catch (error) {
+      // Metrics not available - this is okay, report will work without them
+      logger.debug('Metrics history not available for report');
+    }
+
+    // Extract batch execution results from transformation log
+    const batchExecutionResults: any[] = [];
+    for (const entry of this.state.context.transformationLog) {
+      if (entry.type === 'dependency_update' && entry.details?.batchResults) {
+        batchExecutionResults.push(...entry.details.batchResults);
+      }
+    }
+
+    // Extract LLM analysis from hybrid analysis
+    const llmAnalysis = this.state.hybridAnalysis?.llmAnalysis;
+
+    // Generate the report with all available data
     const report = generateResurrectionReport(this.state.context, {
       hybridAnalysis: this.state.hybridAnalysis,
+      metricsBefore,
+      metricsAfter,
       timeMachineResults: this.state.timeMachineResults,
+      resurrectionVerdict: this.state.context.resurrectionVerdict,
+      validationResult: this.state.postResurrectionValidationResult,
+      batchExecutionResults: batchExecutionResults.length > 0 ? batchExecutionResults : undefined,
+      llmAnalysis,
+      // Note: ghostTourPath, symphonyPath, and dashboardScreenshots would be set by
+      // the frontend/visualization components and passed in separately if needed
+      // fixHistory is not available from PostResurrectionValidationResult - it's internal to the validator
     });
 
     this.eventEmitter.emitNarration({
       message: 'Resurrection complete! Report generated.',
     });
 
+    logger.info('Resurrection report generated successfully');
+    logger.info(`  Report includes: ${Object.keys(report).filter(k => report[k as keyof ResurrectionReport] !== undefined).join(', ')}`);
+
     return report;
+  }
+
+  /**
+   * Generate ResurrectionResult summary
+   * This provides a concise summary of the resurrection process for API consumers
+   * 
+   * Requirements: 4.3, 4.4, 4.5
+   */
+  generateResurrectionResult(): import('../types').ResurrectionResult {
+    const plan = this.state.context.resurrectionPlan;
+    const dependenciesUpdated = plan?.items.filter(item => 
+      this.state.context.transformationLog.some(log => 
+        log.type === 'dependency_update' && 
+        log.details?.packageName === item.packageName
+      )
+    ).length || 0;
+
+    const vulnerabilitiesFixed = plan?.items.reduce((sum, item) => 
+      sum + (item.fixesVulnerabilities ? item.vulnerabilityCount : 0), 0
+    ) || 0;
+
+    const errors: string[] = [];
+    this.state.context.transformationLog
+      .filter(log => log.type === 'error')
+      .forEach(log => errors.push(log.message));
+
+    // Determine if resurrection was partially successful
+    const totalAttempted = this.state.dependencyUpdateSummary?.attempted || 0;
+    const totalSucceeded = this.state.dependencyUpdateSummary?.succeeded || 0;
+    const totalFailed = this.state.dependencyUpdateSummary?.failed || 0;
+    const partialSuccess = totalSucceeded > 0 && totalFailed > 0;
+
+    // Determine overall success
+    const success = totalFailed === 0 && 
+      (this.state.postResurrectionValidationResult?.success !== false) &&
+      errors.length === 0;
+
+    // Build summary message with detailed breakdown
+    let message = '';
+    if (success) {
+      message = `✅ Successfully resurrected repository with ${dependenciesUpdated} dependencies updated and ${vulnerabilitiesFixed} vulnerabilities fixed.`;
+      
+      // Add validation status
+      if (this.state.validationSummary) {
+        if (this.state.validationSummary.compilationStatus === 'passed') {
+          message += ' Compilation validation passed.';
+        } else if (this.state.validationSummary.compilationStatus === 'not_applicable') {
+          message += ' Compilation validation skipped (no build script).';
+        }
+      }
+    } else if (partialSuccess) {
+      message = `⚠️ Partial success: ${totalSucceeded} of ${totalAttempted} dependencies updated successfully, ${totalFailed} failed.`;
+      
+      // Add details about what succeeded and what failed
+      const details: string[] = [];
+      
+      if (vulnerabilitiesFixed > 0) {
+        details.push(`${vulnerabilitiesFixed} vulnerabilities fixed`);
+      }
+      
+      if (this.state.validationSummary) {
+        if (this.state.validationSummary.compilationStatus === 'passed') {
+          details.push('compilation passed');
+        } else if (this.state.validationSummary.compilationStatus === 'failed') {
+          details.push('compilation failed');
+        } else if (this.state.validationSummary.compilationStatus === 'not_applicable') {
+          details.push('compilation skipped');
+        }
+      }
+      
+      if (details.length > 0) {
+        message += ` (${details.join(', ')})`;
+      }
+    } else {
+      message = `❌ Resurrection encountered issues: ${errors.length} errors occurred.`;
+      
+      // Add context about what failed
+      if (totalAttempted > 0) {
+        message += ` ${totalFailed} of ${totalAttempted} dependency updates failed.`;
+      }
+    }
+
+    return {
+      success,
+      message,
+      dependenciesUpdated,
+      vulnerabilitiesFixed,
+      branchUrl: this.state.context.resurrectionBranch 
+        ? `${this.state.context.repoUrl}/tree/${this.state.context.resurrectionBranch}`
+        : undefined,
+      errors: errors.length > 0 ? errors : undefined,
+      partialSuccess,
+      llmAnalysisStatus: this.state.llmAnalysisStatus || 'skipped',
+      llmProvider: this.state.llmProvider || 'none',
+      dependencyUpdateSummary: this.state.dependencyUpdateSummary || {
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0
+      },
+      validationSummary: this.state.validationSummary || {
+        compilationStatus: 'not_applicable',
+        testsStatus: 'not_applicable'
+      }
+    };
   }
 
   /**

@@ -161,6 +161,30 @@ export interface ResurrectionResult {
   pullRequestUrl?: string;
   /** Any errors encountered */
   errors?: string[];
+  /** Whether the resurrection was partially successful (some operations succeeded, some failed) */
+  partialSuccess: boolean;
+  /** Status of LLM analysis during resurrection */
+  llmAnalysisStatus: 'success' | 'partial' | 'failed' | 'skipped';
+  /** LLM provider used for analysis */
+  llmProvider: 'anthropic' | 'gemini' | 'none';
+  /** Summary of dependency update operations */
+  dependencyUpdateSummary: {
+    /** Number of dependency updates attempted */
+    attempted: number;
+    /** Number of dependency updates that succeeded */
+    succeeded: number;
+    /** Number of dependency updates that failed */
+    failed: number;
+    /** Number of dependency updates that were skipped */
+    skipped: number;
+  };
+  /** Summary of post-resurrection validation results */
+  validationSummary: {
+    /** Compilation status after resurrection */
+    compilationStatus: string;
+    /** Test execution status after resurrection */
+    testsStatus: string;
+  };
 }
 
 /**
@@ -432,7 +456,12 @@ export type ResurrectionEventType =
   | 'validation_iteration_start'
   | 'validation_error_analysis'
   | 'validation_fix_applied'
-  | 'validation_fix_outcome';
+  | 'validation_fix_outcome'
+  // Batch execution events
+  | 'batch_started'
+  | 'batch_completed'
+  | 'package_update_started'
+  | 'package_updated';
 
 /**
  * Base event interface
@@ -588,6 +617,46 @@ export interface ResurrectionVerdictEventData {
   summary: string;
 }
 
+/**
+ * Batch started event payload
+ */
+export interface BatchStartedEventData {
+  /** Batch identifier */
+  batchId: string;
+  /** List of packages in this batch */
+  packages: Array<{
+    name: string;
+    fromVersion: string;
+    toVersion: string;
+  }>;
+}
+
+/**
+ * Batch completed event payload
+ */
+export interface BatchCompletedEventData extends BatchExecutionResult {
+  // Inherits all fields from BatchExecutionResult
+}
+
+/**
+ * Package update started event payload
+ */
+export interface PackageUpdateStartedEventData {
+  /** Package name */
+  packageName: string;
+  /** Version before update */
+  fromVersion: string;
+  /** Version after update */
+  toVersion: string;
+}
+
+/**
+ * Package updated event payload
+ */
+export interface PackageUpdatedEventData extends PackageUpdateResult {
+  // Inherits all fields from PackageUpdateResult
+}
+
 // ============================================================================
 // Compilation Proof Engine Types
 // ============================================================================
@@ -698,6 +767,16 @@ export interface ResurrectionVerdict {
 // ============================================================================
 
 /**
+ * Maximum number of validation iterations before giving up
+ */
+export const MAX_VALIDATION_ITERATIONS = 10;
+
+/**
+ * Number of consecutive iterations with no progress before terminating
+ */
+export const NO_PROGRESS_THRESHOLD = 3;
+
+/**
  * Error category for post-resurrection validation errors
  * These are different from compilation errors - they focus on dependency/installation issues
  */
@@ -722,7 +801,44 @@ export type FixStrategy =
   | { type: 'substitute_package'; original: string; replacement: string }
   | { type: 'remove_package'; package: string }
   | { type: 'add_resolution'; package: string; version: string }
-  | { type: 'force_install' };
+  | { type: 'force_install' }
+  | { type: 'delete_lockfile' }
+  | { type: 'clean_install' }
+  | { type: 'update_dependencies' };
+
+/**
+ * Fix strategy enum for categorizing fix types
+ */
+export enum FixStrategyType {
+  ADJUST_VERSION = 'adjust_version',
+  LEGACY_PEER_DEPS = 'legacy_peer_deps',
+  REMOVE_LOCKFILE = 'remove_lockfile',
+  SUBSTITUTE_PACKAGE = 'substitute_package',
+  REMOVE_PACKAGE = 'remove_package',
+  ADD_RESOLUTION = 'add_resolution',
+  FORCE_INSTALL = 'force_install',
+  DELETE_LOCKFILE = 'delete_lockfile',
+  CLEAN_INSTALL = 'clean_install',
+  UPDATE_DEPENDENCIES = 'update_dependencies'
+}
+
+/**
+ * Record of a fix attempt during validation
+ */
+export interface FixAttempt {
+  /** The fix strategy that was attempted */
+  strategy: FixStrategy;
+  /** Iteration number when fix was attempted */
+  iteration: number;
+  /** Number of errors before applying the fix */
+  errorsBefore: number;
+  /** Number of errors after applying the fix */
+  errorsAfter: number;
+  /** Timestamp when fix was attempted */
+  timestamp: number;
+  /** Whether the fix was successful */
+  success: boolean;
+}
 
 /**
  * Package manager types supported by the validation system
@@ -751,6 +867,8 @@ export interface ValidationOptions {
 export interface PostResurrectionCompilationResult {
   /** Whether compilation succeeded */
   success: boolean;
+  /** Compilation status: passed, failed, or not_applicable (no build script) */
+  compilationStatus: 'passed' | 'failed' | 'not_applicable';
   /** Process exit code */
   exitCode: number;
   /** Standard output */
@@ -904,7 +1022,7 @@ export interface ICompilationRunner {
   /** Execute compilation and return result */
   compile(repoPath: string, options: CompileOptions): Promise<PostResurrectionCompilationResult>;
   /** Detect the build command from package.json */
-  detectBuildCommand(packageJson: Record<string, unknown>): string;
+  detectBuildCommand(packageJson: Record<string, unknown>): string | null;
   /** Detect the package manager from lockfiles */
   detectPackageManager(repoPath: string): Promise<PackageManager>;
 }
@@ -1121,6 +1239,46 @@ export const NATIVE_MODULE_ALTERNATIVES: Record<string, string> = {
   'fsevents': ''  // macOS only, skip on other platforms
 };
 
+// ============================================================================
+// Batch Execution Types
+// ============================================================================
+
+/**
+ * Result of updating a single package in a batch
+ */
+export interface PackageUpdateResult {
+  /** Package name */
+  packageName: string;
+  /** Version before update */
+  fromVersion: string;
+  /** Version after update */
+  toVersion: string;
+  /** Whether the update was successful */
+  success: boolean;
+  /** Error message if update failed */
+  error?: string;
+  /** Whether validation passed after update */
+  validationPassed?: boolean;
+}
+
+/**
+ * Result of executing a batch of package updates
+ */
+export interface BatchExecutionResult {
+  /** Batch identifier */
+  batchId: string;
+  /** Number of packages attempted */
+  packagesAttempted: number;
+  /** Number of packages successfully updated */
+  packagesSucceeded: number;
+  /** Number of packages that failed to update */
+  packagesFailed: number;
+  /** Detailed results for each package */
+  results: PackageUpdateResult[];
+  /** Duration of batch execution in milliseconds */
+  duration: number;
+}
+
 /**
  * Priority scores for error categories (higher = more likely root cause)
  */
@@ -1266,4 +1424,22 @@ export interface IURLValidator {
   findNpmAlternative(packageName: string): Promise<string | null>;
   /** Extract package name from a GitHub archive URL */
   extractPackageFromUrl(url: string): string | null;
+}
+
+// ============================================================================
+// Build Configuration Detection Types
+// ============================================================================
+
+/**
+ * Build configuration information for a repository
+ */
+export interface BuildConfiguration {
+  /** Whether the project has a build script */
+  hasBuildScript: boolean;
+  /** The build command to execute (e.g., 'npm run build') */
+  buildCommand: string | null;
+  /** The build tool detected (e.g., 'webpack', 'vite', 'tsc') */
+  buildTool: string | null;
+  /** Whether the project requires compilation before use */
+  requiresCompilation: boolean;
 }

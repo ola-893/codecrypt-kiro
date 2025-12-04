@@ -37,34 +37,56 @@ suite('BatchExecutor Property-Based Tests', () => {
     sinon.restore();
   });
 
+  // Generate valid npm package names
+  const packageNameArbitrary = fc.stringMatching(/^[a-z][a-z0-9-]{1,20}$/)
+    .filter((s: string) => s.length >= 2 && !s.endsWith('-') && !s.includes('--'));
+
+  // Generate valid semantic versions
+  const versionArbitrary = fc.tuple(
+    fc.integer({ min: 0, max: 10 }),
+    fc.integer({ min: 0, max: 20 }),
+    fc.integer({ min: 0, max: 50 })
+  ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+
   // Property 4: Batch modification atomicity
   test('Property 4: Batch modification atomicity', () => {
     fc.assert(
       fc.asyncProperty(fc.record({
         batch: fc.record({
-            id: fc.string(),
+            id: fc.stringMatching(/^batch-[a-z0-9]+$/).filter(s => s.length > 7),
             packages: fc.array(fc.record({
-                packageName: fc.string(),
-                currentVersion: fc.string(),
-                targetVersion: fc.string(),
-                priority: fc.integer(),
+                packageName: packageNameArbitrary,
+                currentVersion: versionArbitrary,
+                targetVersion: versionArbitrary,
+                priority: fc.integer({ min: 0, max: 100 }),
                 reason: fc.string(),
                 fixesVulnerabilities: fc.boolean(),
-                vulnerabilityCount: fc.integer() ,
-            }) as fc.Arbitrary<ResurrectionPlanItem>),
-            priority: fc.integer(),
+                vulnerabilityCount: fc.integer({ min: 0, max: 10 }),
+            }) as fc.Arbitrary<ResurrectionPlanItem>, { minLength: 0, maxLength: 3 }),
+            priority: fc.integer({ min: 0, max: 100 }),
             estimatedRisk: fc.constantFrom('low', 'medium', 'high'),
         }) as fc.Arbitrary<UpdateBatch>,
         installShouldFail: fc.boolean(),
       }), async ({ batch, installShouldFail }) => {
-        // Reset readFile for each test to ensure a clean state
+        // Filter out duplicate package names
+        const uniquePackages = new Map<string, ResurrectionPlanItem>();
+        for (const pkg of batch.packages) {
+          uniquePackages.set(pkg.packageName, pkg);
+        }
+        batch.packages = Array.from(uniquePackages.values());
+        // Reset stubs for each test to ensure a clean state
         readFileStub.resetHistory();
+        writeFileStub.resetHistory();
+        runCommandStub.resetHistory();
+        
         readFileStub.withArgs(packageJsonPath).resolves(initialPackageJsonContent);
+        runCommandStub.withArgs('git', ['checkout', 'HEAD', '--', packageJsonPath])
+          .resolves({ stdout: '', stderr: '', code: 0 });
 
         if (installShouldFail) {
-            runCommandStub.withArgs('npm', ['install']).resolves({ code: 1, stderr: 'error' });
+            runCommandStub.withArgs('npm', ['install']).resolves({ code: 1, stderr: 'error', stdout: '' });
         } else {
-            runCommandStub.withArgs('npm', ['install']).resolves({ code: 0, stdout: 'success' });
+            runCommandStub.withArgs('npm', ['install']).resolves({ code: 0, stdout: 'success', stderr: '' });
         }
 
         const result = await executor.execute(batch, projectPath);
@@ -92,27 +114,43 @@ suite('BatchExecutor Property-Based Tests', () => {
     fc.assert(
       fc.asyncProperty(fc.record({
         batch: fc.record({
-            id: fc.string(),
+            id: fc.stringMatching(/^batch-[a-z0-9]+$/).filter(s => s.length > 7),
             packages: fc.array(fc.record({
-                packageName: fc.string(),
-                currentVersion: fc.string(),
-                targetVersion: fc.string(),
-                priority: fc.integer(),
+                packageName: packageNameArbitrary,
+                currentVersion: versionArbitrary,
+                targetVersion: versionArbitrary,
+                priority: fc.integer({ min: 0, max: 100 }),
                 reason: fc.string(),
                 fixesVulnerabilities: fc.boolean(),
-                vulnerabilityCount: fc.integer(),
-            }) as fc.Arbitrary<ResurrectionPlanItem>),
-            priority: fc.integer(),
+                vulnerabilityCount: fc.integer({ min: 0, max: 10 }),
+            }) as fc.Arbitrary<ResurrectionPlanItem>, { minLength: 1, maxLength: 3 }),
+            priority: fc.integer({ min: 0, max: 100 }),
             estimatedRisk: fc.constantFrom('low', 'medium', 'high'),
         }) as fc.Arbitrary<UpdateBatch>,
       }), async ({ batch }) => {
-        // Reset readFile for each test to ensure a clean state
+        // Filter out duplicate package names
+        const uniquePackages = new Map<string, ResurrectionPlanItem>();
+        for (const pkg of batch.packages) {
+          uniquePackages.set(pkg.packageName, pkg);
+        }
+        batch.packages = Array.from(uniquePackages.values());
+        
+        // Skip if no packages after deduplication
+        if (batch.packages.length === 0) {
+          return true;
+        }
+        // Reset stubs for each test to ensure a clean state
         readFileStub.resetHistory();
+        writeFileStub.resetHistory();
+        runCommandStub.resetHistory();
+        
         readFileStub.withArgs(packageJsonPath).resolves(initialPackageJsonContent);
+        runCommandStub.withArgs('git', ['checkout', 'HEAD', '--', packageJsonPath])
+          .resolves({ stdout: '', stderr: '', code: 0 });
 
-        runCommandStub.withArgs('npm', ['install']).resolves({ code: 1, stderr: 'error' });
-        runCommandStub.withArgs('npm', ['install', '--legacy-peer-deps']).resolves({ code: 0, stdout: 'success' });
-        runCommandStub.withArgs('npm', ['install', '--force']).resolves({ code: 1, stderr: 'error' }); // Ensure this also fails
+        runCommandStub.withArgs('npm', ['install']).resolves({ code: 1, stderr: 'error', stdout: '' });
+        runCommandStub.withArgs('npm', ['install', '--legacy-peer-deps']).resolves({ code: 0, stdout: 'success', stderr: '' });
+        runCommandStub.withArgs('npm', ['install', '--force']).resolves({ code: 1, stderr: 'error', stdout: '' });
 
         const result = await executor.executeWithFallback(batch, projectPath);
         
@@ -127,22 +165,27 @@ suite('BatchExecutor Property-Based Tests', () => {
     fc.assert(
       fc.asyncProperty(fc.record({
         batch: fc.record({
-            id: fc.string(),
+            id: fc.stringMatching(/^batch-[a-z0-9]+$/).filter(s => s.length > 7),
             packages: fc.array(fc.record({
-                packageName: fc.string(),
-                currentVersion: fc.string(),
-                targetVersion: fc.string(),
-                priority: fc.integer(),
+                packageName: packageNameArbitrary,
+                currentVersion: versionArbitrary,
+                targetVersion: versionArbitrary,
+                priority: fc.integer({ min: 0, max: 100 }),
                 reason: fc.string(),
                 fixesVulnerabilities: fc.boolean(),
-                vulnerabilityCount: fc.integer(),
+                vulnerabilityCount: fc.integer({ min: 0, max: 10 }),
             }) as fc.Arbitrary<ResurrectionPlanItem>, { minLength: 2, maxLength: 2 }), // Ensure at least two packages for individual fallback
-            priority: fc.integer(),
+            priority: fc.integer({ min: 0, max: 100 }),
             estimatedRisk: fc.constantFrom('low', 'medium', 'high'),
         }) as fc.Arbitrary<UpdateBatch>,
       }), async ({ batch }) => {
         readFileStub.resetHistory();
+        writeFileStub.resetHistory();
+        runCommandStub.resetHistory();
+        
         readFileStub.withArgs(packageJsonPath).resolves(initialPackageJsonContent);
+        runCommandStub.withArgs('git', ['checkout', 'HEAD', '--', packageJsonPath])
+          .resolves({ stdout: '', stderr: '', code: 0 });
 
         // Simulate initial batch install failing all attempts
         runCommandStub.withArgs('npm', ['install']).resolves({ code: 1, stderr: 'error' });

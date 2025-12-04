@@ -34,7 +34,7 @@ interface LLMConfig {
 interface GeminiConfig {
   /** API key for Google Gemini */
   apiKey: string;
-  /** Model to use (default: gemini-pro) */
+  /** Model to use (default: gemini-3.0-pro) */
   model?: string;
   /** Request timeout in milliseconds */
   timeout?: number;
@@ -162,8 +162,8 @@ export class GeminiClient {
   constructor(config: GeminiConfig) {
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || 'gemini-2.5-pro',
-      timeout: config.timeout || 30000, // 30 seconds
+      model: config.model || 'gemini-3.0-pro', // Default to gemini-3.0-pro
+      timeout: config.timeout || 60000, // 60 seconds (increased for safety)
       maxRetries: config.maxRetries || 3,
     };
 
@@ -216,6 +216,20 @@ export class GeminiClient {
       return text;
     } catch (error) {
       const elapsed = Date.now() - startTime;
+      
+      // Check for network/fetch errors specifically
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isFetchError = errorMessage.includes('fetch failed') || errorMessage.includes('ECONNREFUSED');
+      
+      if (isFetchError) {
+        logger.error(`Gemini network error after ${elapsed}ms - this may be due to VS Code extension host network restrictions`, error);
+        logger.warn('Consider using Anthropic provider or implementing a proxy service');
+        // Don't retry network errors - they won't succeed
+        throw new CodeCryptError(
+          `Gemini network error (VS Code extension host may block external requests): ${errorMessage}`
+        );
+      }
+      
       logger.error(`Gemini request failed after ${elapsed}ms`, error);
       
       const isRetryable = this.isRetryableError(error);
@@ -230,7 +244,7 @@ export class GeminiClient {
 
       logger.error(`Gemini analysis failed after ${retryCount + 1} attempts`, error);
       throw new CodeCryptError(
-        `Gemini analysis failed: ${error instanceof Error ? error.message : String(error)}`
+        `Gemini analysis failed: ${errorMessage}`
       );
     }
   }
@@ -284,6 +298,7 @@ export async function createLLMClient(context: vscode.ExtensionContext): Promise
   // Get LLM provider from configuration (default to anthropic for backward compatibility)
   const config = vscode.workspace.getConfiguration('codecrypt');
   const provider = config.get<string>('llmProvider', 'anthropic');
+  const geminiModel = config.get<string>('geminiModel', 'gemini-3.0-pro'); // Support custom Gemini model
 
   logger.info(`Creating LLM client for provider: ${provider}`);
 
@@ -299,10 +314,12 @@ export async function createLLMClient(context: vscode.ExtensionContext): Promise
           'Gemini API key not configured. LLM analysis will be skipped.'
         );
       }
-      return new GeminiClient({ apiKey: configuredKey });
+      logger.info(`Using Gemini model: ${geminiModel}`);
+      return new GeminiClient({ apiKey: configuredKey, model: geminiModel });
     }
 
-    return new GeminiClient({ apiKey });
+    logger.info(`Using Gemini model: ${geminiModel}`);
+    return new GeminiClient({ apiKey, model: geminiModel });
   } else {
     // Default to Anthropic
     // Try to get API key from secure storage
@@ -324,9 +341,110 @@ export async function createLLMClient(context: vscode.ExtensionContext): Promise
 }
 
 /**
- * Analyze a single file for semantic insights
+ * Sleep utility for backoff
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Analyze a single file with retry logic and adaptive timeout
+ * Returns null if all retries fail (doesn't throw)
+ */
+export async function analyzeFileWithRetry(
+  client: LLMClient | GeminiClient,
+  fileContent: string,
+  filePath: string,
+  astAnalysis?: FileASTAnalysis,
+  attempt: number = 1
+): Promise<LLMInsight | null> {
+  const timeout = calculateAdaptiveTimeout(attempt);
+  
+  try {
+    // Task 5.3: Log file being analyzed, attempt number and timeout
+    logger.info(`[LLM Analysis] ========================================`);
+    logger.info(`[LLM Analysis] Analyzing file: ${filePath}`);
+    logger.info(`[LLM Analysis] Attempt: ${attempt}/${MAX_RETRIES}`);
+    logger.info(`[LLM Analysis] Timeout: ${timeout}ms`);
+    logger.info(`[LLM Analysis] File size: ${fileContent.length} bytes`);
+    if (astAnalysis) {
+      logger.info(`[LLM Analysis] Lines of code: ${astAnalysis.linesOfCode}`);
+      logger.info(`[LLM Analysis] Complexity: ${astAnalysis.complexity.cyclomatic}`);
+    }
+    logger.info(`[LLM Analysis] ========================================`);
+    
+    // Create timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Request timeout after ${timeout}ms`));
+      }, timeout);
+    });
+    
+    const startTime = Date.now();
+    
+    // Race between analysis and timeout
+    const result = await Promise.race([
+      analyzeFileInternal(client, fileContent, filePath, astAnalysis),
+      timeoutPromise
+    ]);
+    
+    const elapsed = Date.now() - startTime;
+    logger.info(`[LLM Analysis] ✓ Analysis completed in ${elapsed}ms (confidence: ${result.confidence})`);
+    
+    return result;
+    
+  } catch (error) {
+    const isTimeout = error instanceof Error && error.message.includes('timeout');
+    
+    if (isTimeout && attempt < MAX_RETRIES) {
+      // Calculate exponential backoff
+      const backoff = Math.pow(2, attempt) * 1000;
+      
+      // Task 5.3: Log retry backoff duration
+      logger.warn(`[LLM Analysis] ⚠ Timeout occurred for ${filePath}`);
+      logger.warn(`[LLM Analysis] Retry backoff: ${backoff}ms`);
+      logger.warn(`[LLM Analysis] Next attempt: ${attempt + 1}/${MAX_RETRIES}`);
+      
+      await sleep(backoff);
+      return analyzeFileWithRetry(client, fileContent, filePath, astAnalysis, attempt + 1);
+    }
+    
+    logger.error(`[LLM Analysis] ✗ Analysis failed for ${filePath} after ${attempt} attempts:`, error);
+    return null; // Return null instead of throwing - allow analysis to continue
+  }
+}
+
+/**
+ * Analyze a single file for semantic insights (backward compatible wrapper)
  */
 export async function analyzeFile(
+  client: LLMClient | GeminiClient,
+  fileContent: string,
+  filePath: string,
+  astAnalysis?: FileASTAnalysis
+): Promise<LLMInsight> {
+  const result = await analyzeFileWithRetry(client, fileContent, filePath, astAnalysis);
+  
+  // If retry logic returns null, return a fallback insight
+  if (result === null) {
+    return {
+      filePath,
+      developerIntent: 'Unable to analyze',
+      domainConcepts: [],
+      idiomaticPatterns: [],
+      antiPatterns: [],
+      modernizationSuggestions: [],
+      confidence: 0,
+    };
+  }
+  
+  return result;
+}
+
+/**
+ * Internal function to analyze a single file for semantic insights
+ */
+async function analyzeFileInternal(
   client: LLMClient | GeminiClient,
   fileContent: string,
   filePath: string,
@@ -501,6 +619,22 @@ Respond with ONLY valid JSON.`;
   }
 }
 
+// Timeout configuration constants
+const MAX_RETRIES = 3;
+const BASE_TIMEOUT = 30000; // 30 seconds
+const MAX_TIMEOUT = 60000; // 60 seconds
+const TIMEOUT_THRESHOLD = 3; // consecutive timeouts before skipping remaining files
+
+/**
+ * Calculate adaptive timeout based on attempt number
+ * Uses exponential backoff: BASE_TIMEOUT * 1.5^(attempt-1)
+ * Capped at MAX_TIMEOUT
+ */
+function calculateAdaptiveTimeout(attempt: number): number {
+  const timeout = BASE_TIMEOUT * Math.pow(1.5, attempt - 1);
+  return Math.min(timeout, MAX_TIMEOUT);
+}
+
 /**
  * Analyze entire repository for semantic insights
  */
@@ -510,7 +644,12 @@ export async function analyzeRepository(
   astAnalysis: ASTAnalysis,
   progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<LLMAnalysis> {
-  logger.info('Starting LLM repository analysis', { repoPath, fileCount: astAnalysis.files.length });
+  // Task 5.3: Enhanced repository analysis logging
+  logger.info('[LLM Analysis] ========================================');
+  logger.info('[LLM Analysis] REPOSITORY ANALYSIS STARTED');
+  logger.info('[LLM Analysis] ========================================');
+  logger.info(`[LLM Analysis] Repository: ${repoPath}`);
+  logger.info(`[LLM Analysis] Total files in AST: ${astAnalysis.files.length}`);
 
   const insights: LLMInsight[] = [];
   const fs = require('fs');
@@ -518,7 +657,12 @@ export async function analyzeRepository(
 
   // First, analyze project intent
   progress?.report({ message: 'Analyzing project intent...', increment: 5 });
+  logger.info('[LLM Analysis] Analyzing project intent...');
   const projectAnalysis = await analyzeProjectIntent(client, repoPath);
+  
+  if (projectAnalysis.intent) {
+    logger.info(`[LLM Analysis] Project intent: ${projectAnalysis.intent.substring(0, 100)}...`);
+  }
 
   // Analyze each file (limit to important files to save API calls)
   const filesToAnalyze = astAnalysis.files
@@ -531,36 +675,74 @@ export async function analyzeRepository(
 
   const totalFiles = filesToAnalyze.length;
   const incrementPerFile = 90 / totalFiles; // Reserve 5% for project analysis, 5% for summary
+  
+  logger.info(`[LLM Analysis] Files to analyze: ${totalFiles} (filtered from ${astAnalysis.files.length})`);
+  logger.info('[LLM Analysis] ----------------------------------------');
+  
+  // Track timeout count for graceful degradation
+  let timeoutCount = 0;
+  let consecutiveTimeouts = 0;
 
   for (let i = 0; i < totalFiles; i++) {
     const fileAnalysis = filesToAnalyze[i];
     const fullPath = path.join(repoPath, fileAnalysis.filePath);
 
     try {
-      logger.info(`Processing file ${i + 1}/${totalFiles}: ${fileAnalysis.filePath}`);
+      logger.info(`[LLM Analysis] Processing file ${i + 1}/${totalFiles}: ${fileAnalysis.filePath}`);
       progress?.report({
         message: `Analyzing ${fileAnalysis.filePath} with LLM (${i + 1}/${totalFiles})`,
         increment: incrementPerFile,
       });
 
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
-      logger.debug(`File ${fileAnalysis.filePath} size: ${fileContent.length} bytes, ${fileAnalysis.linesOfCode} LOC`);
+      logger.debug(`[LLM Analysis] File size: ${fileContent.length} bytes, ${fileAnalysis.linesOfCode} LOC`);
       
       const fileStartTime = Date.now();
-      const insight = await analyzeFile(client, fileContent, fileAnalysis.filePath, fileAnalysis);
+      const insight = await analyzeFileWithRetry(client, fileContent, fileAnalysis.filePath, fileAnalysis);
       const fileElapsed = Date.now() - fileStartTime;
       
-      logger.info(`Completed analysis of ${fileAnalysis.filePath} in ${fileElapsed}ms (confidence: ${insight.confidence})`);
-      insights.push(insight);
+      // Handle null results (timeouts)
+      if (insight === null) {
+        timeoutCount++;
+        consecutiveTimeouts++;
+        
+        // Task 5.3: Log timeout count
+        logger.warn(`[LLM Analysis] ⚠ Analysis timed out for ${fileAnalysis.filePath}`);
+        logger.warn(`[LLM Analysis] Total timeout count: ${timeoutCount}`);
+        logger.warn(`[LLM Analysis] Consecutive timeouts: ${consecutiveTimeouts}/${TIMEOUT_THRESHOLD}`);
+        
+        // Check if we've hit the timeout threshold
+        if (consecutiveTimeouts >= TIMEOUT_THRESHOLD) {
+          const remainingFiles = totalFiles - i - 1;
+          logger.warn(`[LLM Analysis] ========================================`);
+          logger.warn(`[LLM Analysis] TIMEOUT THRESHOLD REACHED`);
+          logger.warn(`[LLM Analysis] ========================================`);
+          logger.warn(`[LLM Analysis] Consecutive timeouts: ${consecutiveTimeouts}`);
+          logger.warn(`[LLM Analysis] Skipping remaining ${remainingFiles} files`);
+          logger.warn(`[LLM Analysis] Returning partial results`);
+          logger.warn(`[LLM Analysis] ========================================`);
+          break;
+        }
+      } else {
+        // Reset consecutive timeout count on successful analysis
+        consecutiveTimeouts = 0;
+        logger.info(`[LLM Analysis] ✓ Completed in ${fileElapsed}ms (confidence: ${insight.confidence})`);
+        logger.info(`[LLM Analysis]   - Developer intent: ${insight.developerIntent.substring(0, 60)}...`);
+        logger.info(`[LLM Analysis]   - Domain concepts: ${insight.domainConcepts.length}`);
+        logger.info(`[LLM Analysis]   - Modernization suggestions: ${insight.modernizationSuggestions.length}`);
+        insights.push(insight);
+      }
     } catch (error) {
-      logger.error(`Failed to analyze file ${fileAnalysis.filePath}`, error);
-      logger.warn(`Continuing with remaining ${totalFiles - i - 1} files`);
+      logger.error(`[LLM Analysis] ✗ Failed to analyze file ${fileAnalysis.filePath}`, error);
+      logger.warn(`[LLM Analysis] Continuing with remaining ${totalFiles - i - 1} files`);
       // Continue with other files
     }
   }
 
   // Extract key domain concepts across all insights
   progress?.report({ message: 'Extracting key domain concepts...', increment: 5 });
+  logger.info('[LLM Analysis] Extracting key domain concepts...');
+  
   const allDomainConcepts = insights.flatMap((i) => i.domainConcepts);
   const conceptCounts = new Map<string, number>();
   allDomainConcepts.forEach((concept) => {
@@ -572,11 +754,45 @@ export async function analyzeRepository(
     .slice(0, 10)
     .map(([concept]) => concept);
 
-  logger.info('LLM repository analysis complete', {
-    insightsCount: insights.length,
-    keyDomainConcepts,
-    projectIntent: projectAnalysis.intent,
-  });
+  // Task 5.3: Log analysis summary (X/Y files)
+  const successfulAnalyses = insights.length;
+  const failedAnalyses = totalFiles - successfulAnalyses;
+  const analysisRate = totalFiles > 0 ? ((successfulAnalyses / totalFiles) * 100).toFixed(1) : '0';
+  
+  logger.info('[LLM Analysis] ========================================');
+  logger.info('[LLM Analysis] REPOSITORY ANALYSIS COMPLETE');
+  logger.info('[LLM Analysis] ========================================');
+  logger.info(`[LLM Analysis] Files analyzed: ${successfulAnalyses}/${totalFiles} (${analysisRate}%)`);
+  logger.info(`[LLM Analysis] Files failed/skipped: ${failedAnalyses}`);
+  logger.info(`[LLM Analysis] Total timeouts: ${timeoutCount}`);
+  logger.info(`[LLM Analysis] Key domain concepts: ${keyDomainConcepts.length}`);
+  
+  if (keyDomainConcepts.length > 0) {
+    logger.info('[LLM Analysis] Top domain concepts:');
+    keyDomainConcepts.slice(0, 5).forEach((concept, idx) => {
+      const count = conceptCounts.get(concept) || 0;
+      logger.info(`[LLM Analysis]   ${idx + 1}. ${concept} (${count} occurrences)`);
+    });
+  }
+  
+  if (projectAnalysis.intent) {
+    logger.info(`[LLM Analysis] Project intent: ${projectAnalysis.intent.substring(0, 150)}...`);
+  }
+  
+  if (projectAnalysis.strategy) {
+    logger.info(`[LLM Analysis] Modernization strategy: ${projectAnalysis.strategy.substring(0, 150)}...`);
+  }
+  
+  if (failedAnalyses > 0) {
+    logger.warn(`[LLM Analysis] ⚠ ${failedAnalyses} files failed to analyze or were skipped`);
+  }
+  
+  if (timeoutCount >= TIMEOUT_THRESHOLD) {
+    logger.warn('[LLM Analysis] ⚠ Analysis terminated early due to consecutive timeouts');
+    logger.warn('[LLM Analysis] ⚠ Returning partial results');
+  }
+  
+  logger.info('[LLM Analysis] ========================================');
 
   return {
     insights,

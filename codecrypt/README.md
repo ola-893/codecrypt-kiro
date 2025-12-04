@@ -25,9 +25,9 @@ CodeCrypt is an autonomous AI agent that resurrects abandoned software projects 
 
 ## LLM Provider Setup
 
-CodeCrypt supports two LLM providers for semantic code analysis:
+CodeCrypt supports two LLM providers for semantic code analysis with intelligent fallback:
 
-### Anthropic Claude (Default)
+### Anthropic Claude (Recommended)
 
 1. Get your API key from [Anthropic Console](https://console.anthropic.com/)
 2. Run command: `CodeCrypt: Configure Anthropic API Key` (or it will prompt you automatically)
@@ -40,21 +40,55 @@ CodeCrypt supports two LLM providers for semantic code analysis:
 3. Enter your API key starting with `AIza`
 4. Switch provider: `CodeCrypt: Switch LLM Provider` and select "Google Gemini"
 
+### Configurable Gemini Models
+
+You can choose which Gemini model to use:
+
+```json
+{
+  "codecrypt.llmProvider": "gemini",
+  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+}
+```
+
+**Supported Models:**
+- `gemini-1.5-flash-latest` (recommended) - Fast and efficient
+- `gemini-1.5-pro` - More capable reasoning
+- `gemini-3.0-pro` - Latest model (requires API access)
+- `gemini-pro` - Stable fallback
+
+### Intelligent Fallback Chain
+
+CodeCrypt automatically falls back if the primary provider fails:
+
+```
+Primary LLM → Fallback LLM → AST-only Analysis
+```
+
+**Best Practice:** Configure both providers for maximum reliability:
+- Primary: Your preferred provider (Gemini or Anthropic)
+- Fallback: The other provider
+- Final: AST-only analysis (always available)
+
+This ensures resurrection continues even if one provider has issues.
+
 ### Provider Comparison
 
 | Feature | Anthropic Claude | Google Gemini |
 |---------|-----------------|---------------|
-| Model | claude-3-5-sonnet-20241022 | gemini-pro |
+| Model | claude-3-5-sonnet-20241022 | gemini-1.5-flash-latest (configurable) |
 | Context Window | Large | Large |
 | Code Understanding | Excellent | Excellent |
 | Cost | Pay per token | Free tier available |
 | Setup | API key required | API key required |
+| Fallback Support | ✅ Yes | ✅ Yes |
 
 ## Extension Settings
 
 This extension contributes the following settings:
 
 * `codecrypt.llmProvider`: Choose LLM provider for semantic analysis (`anthropic` or `gemini`)
+* `codecrypt.geminiModel`: Configure which Gemini model to use (default: `gemini-1.5-flash-latest`)
 * `codecrypt.mcpServers`: Configure MCP server connections for external integrations
 
 ## Commands
@@ -75,7 +109,7 @@ This extension contributes the following settings:
 
 ## Configuration Examples
 
-### Using Anthropic Claude (Default)
+### Using Anthropic Claude (Recommended)
 
 ```json
 {
@@ -83,13 +117,31 @@ This extension contributes the following settings:
 }
 ```
 
-### Using Google Gemini
+### Using Google Gemini with Custom Model
 
 ```json
 {
-  "codecrypt.llmProvider": "gemini"
+  "codecrypt.llmProvider": "gemini",
+  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
 }
 ```
+
+### Maximum Reliability (Both Providers)
+
+Configure both providers for automatic fallback:
+
+```json
+{
+  "codecrypt.llmProvider": "gemini",
+  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+}
+```
+
+Then configure both API keys:
+- `CodeCrypt: Configure Gemini API Key`
+- `CodeCrypt: Configure Anthropic API Key`
+
+If Gemini fails, Anthropic automatically takes over.
 
 ### Environment Variables (Alternative)
 
@@ -107,11 +159,49 @@ export GEMINI_API_KEY="AIza..."
 - Environment variables are sanitized before logging
 - MCP server credentials are validated for security patterns
 
+## Resilient Error Handling
+
+CodeCrypt is designed to handle failures gracefully:
+
+### Dead URL Detection
+- Automatically detects dead GitHub tarball URLs (404 errors)
+- Attempts to resolve packages from npm registry
+- Continues with available packages if some fail
+- Reports detailed summary of successful vs failed updates
+
+### Build Script Detection
+- Intelligently detects if a project requires compilation
+- Skips compilation validation for projects without build scripts
+- Supports alternative build tools (Gulp, Grunt, Webpack)
+- Clearly distinguishes "not applicable" from "failed"
+
+### Partial Success Reporting
+- Resurrection can succeed even if some operations fail
+- Detailed summary shows what succeeded and what failed
+- Provides actionable information for manual fixes
+- Marks results as `partialSuccess: true` when appropriate
+
+### LLM Provider Fallback
+- Automatically switches providers if primary fails
+- Falls back to AST-only analysis if no LLM available
+- Continues resurrection without crashing
+- Logs which provider was used and why
+
+See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for detailed guidance.
+
 ## Known Issues
 
 - Time Machine validation requires Docker to be installed and running
 - 3D Ghost Tour requires WebGL support in the browser
 - Audio features require browser support for Web Speech API
+- Some Gemini models require special API access (use `gemini-1.5-flash-latest` for best compatibility)
+
+## Documentation
+
+- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Quick reference for common tasks ⚡
+- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** - Comprehensive troubleshooting guide
+- **[DEMO_CRITICAL_FIXES.md](./DEMO_CRITICAL_FIXES.md)** - Detailed documentation of resilience features
+- **[SECURITY.md](./SECURITY.md)** - Security implementation details
 
 ## Release Notes
 
@@ -124,6 +214,10 @@ Initial release with:
 - Time Machine validation
 - Live dashboard and visualizations
 - Support for both Anthropic Claude and Google Gemini
+- Intelligent LLM provider fallback
+- Automatic dead URL detection and resolution
+- Smart build script detection
+- Partial success reporting
 
 ---
 

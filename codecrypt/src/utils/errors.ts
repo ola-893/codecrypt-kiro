@@ -33,7 +33,7 @@ export function parseNpmError(stderr: string): NpmInstallError {
     return {
         errorType: NpmErrorType.BuildFailure,
         message: 'Build failure'
-    }
+    };
   }
 
   return {

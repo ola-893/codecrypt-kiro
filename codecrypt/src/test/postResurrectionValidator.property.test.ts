@@ -211,6 +211,7 @@ const analyzedErrorArb: fc.Arbitrary<AnalyzedError> = fc.record({
 const compilationResultArb = (success: boolean): fc.Arbitrary<PostResurrectionCompilationResult> => 
   fc.record({
     success: fc.constant(success),
+    compilationStatus: fc.constant(success ? 'passed' : 'failed'),
     exitCode: fc.constant(success ? 0 : 1),
     stdout: fc.string({ minLength: 0, maxLength: 500 }),
     stderr: fc.string({ minLength: 0, maxLength: 500 }),
@@ -285,6 +286,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             for (let i = 0; i < failuresBeforeSuccess; i++) {
               results.push({
                 success: false,
+        compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: 'Error',
@@ -293,6 +295,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             }
             results.push({
               success: true,
+        compilationStatus: 'passed',
               exitCode: 0,
               stdout: 'Success',
               stderr: '',
@@ -341,6 +344,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             // Always fail
             const failResult: PostResurrectionCompilationResult = {
               success: false,
+        compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: 'Error',
@@ -388,8 +392,8 @@ suite('PostResurrectionValidator Property Tests', () => {
           async (errors) => {
             // Fail once, then succeed
             const results: PostResurrectionCompilationResult[] = [
-              { success: false, exitCode: 1, stdout: '', stderr: 'Error', duration: 1000 },
-              { success: true, exitCode: 0, stdout: 'Success', stderr: '', duration: 1000 }
+              { success: false, compilationStatus: 'failed', exitCode: 1, stdout: '', stderr: 'Error', duration: 1000 },
+              { success: true, compilationStatus: 'passed', exitCode: 0, stdout: 'Success', stderr: '', duration: 1000 }
             ];
 
             const mockRunner = new MockCompilationRunner(results);
@@ -433,6 +437,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             for (let i = 0; i < targetIterations - 1; i++) {
               results.push({
                 success: false,
+        compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: 'Error',
@@ -441,6 +446,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             }
             results.push({
               success: true,
+        compilationStatus: 'passed',
               exitCode: 0,
               stdout: 'Success',
               stderr: '',
@@ -502,6 +508,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             for (let i = 0; i < iterations - 1; i++) {
               results.push({
                 success: false,
+        compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: 'Error',
@@ -510,6 +517,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             }
             results.push({
               success: true,
+        compilationStatus: 'passed',
               exitCode: 0,
               stdout: 'Success',
               stderr: '',
@@ -589,6 +597,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             for (let i = 0; i < failuresBeforeSuccess; i++) {
               results.push({
                 success: false,
+        compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: 'Error',
@@ -597,6 +606,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             }
             results.push({
               success: true,
+        compilationStatus: 'passed',
               exitCode: 0,
               stdout: 'Success',
               stderr: '',
@@ -650,6 +660,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             // Always fail
             const failResult: PostResurrectionCompilationResult = {
               success: false,
+        compilationStatus: 'failed',
               exitCode: 1,
               stdout: '',
               stderr: 'Error',
@@ -702,6 +713,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             for (let i = 0; i < iterations - 1; i++) {
               results.push({
                 success: false,
+        compilationStatus: 'failed',
                 exitCode: 1,
                 stdout: '',
                 stderr: 'Error',
@@ -710,6 +722,7 @@ suite('PostResurrectionValidator Property Tests', () => {
             }
             results.push({
               success: true,
+        compilationStatus: 'passed',
               exitCode: 0,
               stdout: 'Success',
               stderr: '',

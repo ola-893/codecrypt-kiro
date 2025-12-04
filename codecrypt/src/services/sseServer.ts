@@ -77,6 +77,11 @@ export class SSEServer {
         'validation_error_analysis',
         'validation_fix_applied',
         'validation_fix_outcome',
+        // Batch execution events
+        'batch_started',
+        'batch_completed',
+        'package_update_started',
+        'package_updated',
       ],
       ...config,
     };
@@ -265,6 +270,23 @@ export class SSEServer {
 
     this.eventEmitter.onValidationFixOutcome((event) => {
       this.broadcastEvent('validation_fix_outcome', event);
+    });
+
+    // Forward batch execution events
+    this.eventEmitter.onBatchStarted((event) => {
+      this.broadcastEvent('batch_started', event);
+    });
+
+    this.eventEmitter.onBatchCompleted((event) => {
+      this.broadcastEvent('batch_completed', event);
+    });
+
+    this.eventEmitter.onPackageUpdateStarted((event) => {
+      this.broadcastEvent('package_update_started', event);
+    });
+
+    this.eventEmitter.onPackageUpdated((event) => {
+      this.broadcastEvent('package_updated', event);
     });
   }
 

@@ -64,6 +64,16 @@
           "default": "anthropic",
           "description": "LLM provider to use for semantic code analysis (anthropic or gemini)"
         },
+        "codecrypt.geminiModel": {
+          "type": "string",
+          "default": "gemini-1.5-flash",
+          "description": "Gemini model to use for code analysis (e.g., gemini-1.5-flash, gemini-3.0-pro)",
+          "examples": [
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-3.0-pro"
+          ]
+        },
         "codecrypt.mcpServers": {
           "type": "array",
           "default": [],

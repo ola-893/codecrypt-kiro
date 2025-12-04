@@ -467,7 +467,7 @@ export function extractMissingModules(errors: CategorizedError[]): string[] {
   const modules = new Set<string>();
   
   for (const error of errors) {
-    if (error.category !== 'import') continue;
+    if (error.category !== 'import') {continue;}
     
     // Pattern: Cannot find module 'xxx'
     const moduleMatch = error.message.match(/(?:cannot find module|can't resolve)\s*['"]([^'"]+)['"]/i);
