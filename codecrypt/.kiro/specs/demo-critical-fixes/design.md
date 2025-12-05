@@ -19,7 +19,7 @@ The fixes are organized into three main areas:
 **Location**: `src/services/llmAnalysis.ts`
 
 **Changes**:
-- Update model name from `gemini-1.5-flash` to `gemini-1.5-flash-latest` or `gemini-pro`
+- Update model name to use `gemini-3-pro-preview` (current recommended model)
 - Add API version configuration (use v1 instead of v1beta)
 - Implement provider fallback logic
 - Add better error messages with model and API version details
@@ -28,7 +28,7 @@ The fixes are organized into three main areas:
 ```typescript
 interface GeminiConfig {
   apiKey: string;
-  model?: string; // Default: 'gemini-1.5-flash-latest'
+  model?: string; // Default: 'gemini-3-pro-preview'
   apiVersion?: string; // Default: 'v1'
   timeout?: number;
   maxRetries?: number;
@@ -284,13 +284,13 @@ interface ResurrectionResult {
 
 ### Gemini API Model Fix
 
-The current code uses `gemini-1.5-flash` which may not be available in all API versions. Options:
+The system now uses `gemini-3-pro-preview` which is the current recommended model. This provides:
 
-1. **Use `gemini-1.5-flash-latest`**: This is the recommended stable model name
-2. **Use `gemini-pro`**: Fallback to the older stable model
-3. **Use v1 API instead of v1beta**: The stable API endpoint
+1. **Best compatibility**: Widely available and stable
+2. **Enhanced capabilities**: Latest model with improved performance
+3. **v1 API support**: Uses the stable API endpoint
 
-Recommended approach: Try `gemini-1.5-flash-latest` first, fall back to `gemini-pro` if that fails.
+The model configuration is set in `llmAnalysis.ts` and can be overridden via VS Code settings.
 
 ### Dead URL Pattern
 

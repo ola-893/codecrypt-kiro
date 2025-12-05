@@ -308,3 +308,109 @@
 .connection-error {
   animation: fade-in 0.4s ease-out;
 }
+
+/* Demo Mode Styles */
+.status-demo {
+  color: #9b59b6;
+  text-shadow: 0 0 10px rgba(155, 89, 182, 0.5);
+  font-weight: 600;
+}
+
+.demo-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  animation: fade-in 0.6s ease-out;
+}
+
+.demo-icon {
+  font-size: 1.5rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Audio Enable Button */
+.audio-prompt {
+  text-align: center;
+  padding: var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%);
+  border: 2px solid rgba(139, 92, 246, 0.3);
+  border-radius: var(--radius-lg);
+  animation: fade-in 0.8s ease-out, pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+  }
+  50% {
+    border-color: rgba(139, 92, 246, 0.6);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.4);
+  }
+}
+
+.audio-enable-btn {
+  background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%);
+  color: white;
+  border: none;
+  padding: 16px 32px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.audio-enable-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+}
+
+.audio-enable-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.audio-prompt small {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin-top: 8px;
+}
+
+
+/* Ghost Tour Container */
+.ghost-tour-container {
+  margin-top: 2rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 0, 139, 0.3);
+}
+
+.section-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #9d4edd;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 10px rgba(157, 78, 221, 0.5);
+}
+
+.section-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 1.5rem;
+}

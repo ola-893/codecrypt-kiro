@@ -13,12 +13,9 @@ Three major failure categories were identified and fixed:
 
 ### Problem
 
-During the demo, Gemini API calls failed with:
-```
-Error: 404 - Model 'gemini-1.5-flash' not found
-```
+During the demo, Gemini API calls failed with model not found errors.
 
-This caused the entire resurrection process to crash.
+This caused the entire resurrection process to crash. This has been fixed by updating to `gemini-3-pro-preview`.
 
 ### Solution
 
@@ -34,15 +31,12 @@ You can now configure which Gemini model to use:
 **Via settings.json:**
 ```json
 {
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
-**Supported Models:**
-- `gemini-1.5-flash-latest` (recommended) - Latest stable flash model
-- `gemini-1.5-pro` - More capable model
-- `gemini-3.0-pro` - Newest model (requires API access)
-- `gemini-pro` - Stable fallback
+**Supported Model:**
+- `gemini-3-pro-preview` (recommended, default) - Latest model with enhanced capabilities
 
 #### Intelligent Fallback Chain
 
@@ -67,7 +61,7 @@ CodeCrypt now implements a three-tier fallback strategy:
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -82,7 +76,7 @@ CodeCrypt: Configure Anthropic API Key
 
 The system logs which provider is being used:
 ```
-[INFO] Using Gemini model: gemini-1.5-flash-latest
+[INFO] Using Gemini model: gemini-3-pro-preview
 [INFO] Gemini client initialized successfully
 ```
 
@@ -393,7 +387,7 @@ All features are thoroughly tested:
 
 No action required! The fixes are backward compatible:
 
-1. **Gemini Users:** Default model is now `gemini-1.5-flash-latest`
+1. **Gemini Users:** Default model is now `gemini-3-pro-preview`
 2. **All Users:** Fallback logic activates automatically
 3. **All Users:** Dead URL handling is automatic
 4. **All Users:** Build script detection is automatic
@@ -405,7 +399,7 @@ For maximum reliability:
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -452,7 +446,7 @@ See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for detailed guidance on:
   },
   "codecrypt.geminiModel": {
     "type": "string",
-    "default": "gemini-1.5-flash-latest",
+    "default": "gemini-3-pro-preview",
     "description": "Gemini model to use for code analysis"
   }
 }

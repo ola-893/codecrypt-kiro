@@ -87,7 +87,7 @@ export function Dashboard() {
           <div className="dashboard__stat">
             <span className="dashboard__stat-label">Lines of Code</span>
             <span className="dashboard__stat-value">
-              {currentMetrics.loc.toLocaleString()}
+              {(currentMetrics.loc || 0).toLocaleString()}
             </span>
           </div>
           <div className="dashboard__stat">

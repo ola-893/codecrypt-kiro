@@ -118,6 +118,19 @@ export class SmartDependencyUpdaterImpl implements SmartDependencyUpdater {
       // Log the report
       const report = this.deadUrlHandler.generateReport(deadUrlSummary);
       logger.info(`[SmartDependencyUpdater] Dead URL handling report:\n${report}`);
+      
+      // Regenerate lockfile after dead URL fixes
+      // _Requirements: 4.1, 4.2, 4.3_
+      if (deadUrlSummary.deadUrlsFound > 0) {
+        logger.info(`[SmartDependencyUpdater] Regenerating lockfile after dead URL resolution`);
+        try {
+          await this.deadUrlHandler.regenerateLockfile(projectPath, 'npm');
+          logger.info(`[SmartDependencyUpdater] Lockfile regenerated successfully`);
+        } catch (error) {
+          logger.warn(`[SmartDependencyUpdater] Lockfile regeneration failed, continuing anyway`, error);
+          // Don't throw - we want to continue even if lockfile regeneration fails
+        }
+      }
     }
 
     // 2. Apply package replacements

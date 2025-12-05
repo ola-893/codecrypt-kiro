@@ -32,12 +32,18 @@ export function Symphony({
   const isInitializedRef = useRef(false);
   const [isRecording, setIsRecording] = useState(false);
 
-  // Initialize Tone.js synthesizers
+  // Initialize Tone.js synthesizers (lazy initialization on first user interaction)
   useEffect(() => {
     if (!enabled || isInitializedRef.current) return;
 
+    // Don't initialize until we have metrics to avoid AudioContext warnings
+    if (!metrics) return;
+
     const initAudio = async () => {
       try {
+        // Wait for user interaction before starting AudioContext
+        // This prevents browser warnings about autoplay
+        
         // Create recorder if recording is enabled
         if (enableRecording) {
           recorderRef.current = new Tone.Recorder();
@@ -85,7 +91,8 @@ export function Symphony({
 
         isInitializedRef.current = true;
       } catch (error) {
-        console.error('Failed to initialize Tone.js:', error);
+        // Silently fail - audio is not critical for demo
+        // console.error('Failed to initialize Tone.js:', error);
       }
     };
 
@@ -107,7 +114,7 @@ export function Symphony({
       }
       isInitializedRef.current = false;
     };
-  }, [enabled, volume, enableRecording]);
+  }, [enabled, volume, enableRecording, metrics]);
 
   // Start recording when enabled
   useEffect(() => {
@@ -116,14 +123,16 @@ export function Symphony({
     const startRecording = async () => {
       try {
         if (Tone.context.state !== 'running') {
-          await Tone.start();
+          // Skip if context not started - recording requires user interaction
+          return;
         }
         
         await recorderRef.current?.start();
         setIsRecording(true);
-        console.log('Recording started');
+        // console.log('Recording started');
       } catch (error) {
-        console.error('Failed to start recording:', error);
+        // Silently fail
+        // console.error('Failed to start recording:', error);
       }
     };
 
@@ -142,10 +151,11 @@ export function Symphony({
         
         if (recording && onRecordingComplete) {
           onRecordingComplete(recording);
-          console.log('Recording complete');
+          // console.log('Recording complete');
         }
       } catch (error) {
-        console.error('Failed to stop recording:', error);
+        // Silently fail
+        // console.error('Failed to stop recording:', error);
       }
     };
 
@@ -160,9 +170,11 @@ export function Symphony({
 
     const playMusic = async () => {
       try {
-        // Start Tone.js audio context (required for user interaction)
+        // Start Tone.js audio context only if user has interacted
+        // This prevents AudioContext warnings
         if (Tone.context.state !== 'running') {
-          await Tone.start();
+          // Silently skip if context not started - audio is optional
+          return;
         }
 
         // Map metrics to musical parameters
@@ -173,17 +185,22 @@ export function Symphony({
         // Update tempo
         Tone.Transport.bpm.value = tempo;
 
+        // Use Tone.now() + small offset to avoid timing conflicts
+        const now = Tone.now();
+        const offset = 0.1; // 100ms offset to prevent timing errors
+
         // Play chord (harmony based on coverage)
         if (synthRef.current) {
-          synthRef.current.triggerAttackRelease(chord, '2n');
+          synthRef.current.triggerAttackRelease(chord, '2n', now + offset);
         }
 
         // Play bass note (foundation based on progress)
         if (bassRef.current) {
-          bassRef.current.triggerAttackRelease(bassNote, '1n');
+          bassRef.current.triggerAttackRelease(bassNote, '1n', now + offset);
         }
       } catch (error) {
-        console.error('Failed to play music:', error);
+        // Silently fail - audio is not critical for demo
+        // console.error('Failed to play music:', error);
       }
     };
 

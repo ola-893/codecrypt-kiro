@@ -1,11 +1,14 @@
 /**
- * Unit tests for LLM Analysis timeout handling
+ * Unit tests for LLM Analysis timeout handling and error handling
  * Tests the timeout and retry logic added in Task 3
- * Requirements: 3.1, 3.2, 3.3, 3.4
+ * Tests the Gemini API error handling added in Task 3 (critical-dependency-fixes)
+ * Requirements: 3.1, 3.2, 3.3, 3.4, 4.2, 4.4
  */
 
 import * as assert from 'assert';
 import * as sinon from 'sinon';
+import { GeminiClient } from '../services/llmAnalysis';
+import { CodeCryptError } from '../utils/errors';
 
 suite('LLM Analysis Timeout Handling Tests', () => {
   teardown(() => {
@@ -103,6 +106,115 @@ suite('LLM Analysis Timeout Handling Tests', () => {
       assert.strictEqual(conceptCounts.get('authentication'), 2, 'Authentication should appear twice');
       assert.strictEqual(conceptCounts.get('security'), 1, 'Security should appear once');
       assert.strictEqual(conceptCounts.get('users'), 1, 'Users should appear once');
+    });
+  });
+
+  suite('Gemini API Error Handling', () => {
+    test('should detect 404 model not found errors', async () => {
+      // Create a mock Gemini client with an invalid model
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: 'invalid-model-name'
+      });
+
+      // Mock the generateContent method to throw a 404 error
+      const mockModel = (client as any).model;
+      sinon.stub(mockModel, 'generateContent').rejects(
+        new Error('404: Model models/invalid-model-name not found')
+      );
+
+      try {
+        await client.analyzeCode('test prompt');
+        assert.fail('Should have thrown an error');
+      } catch (error) {
+        assert.ok(error instanceof CodeCryptError, 'Should throw CodeCryptError');
+        assert.strictEqual((error as CodeCryptError).code, 'GEMINI_MODEL_NOT_FOUND', 'Should have correct error code');
+        assert.ok((error as Error).message.includes('invalid-model-name'), 'Should include attempted model name');
+        assert.ok((error as Error).message.includes('gemini-3-pro-preview'), 'Should suggest correct model');
+      }
+    });
+
+    test('should include actionable guidance in 404 error message', async () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: 'gemini-old-invalid-model'
+      });
+
+      const mockModel = (client as any).model;
+      sinon.stub(mockModel, 'generateContent').rejects(
+        new Error('404: Model not found')
+      );
+
+      try {
+        await client.analyzeCode('test prompt');
+        assert.fail('Should have thrown an error');
+      } catch (error) {
+        const message = (error as Error).message;
+        assert.ok(message.includes('VS Code settings'), 'Should mention VS Code settings');
+        assert.ok(message.includes('codecrypt.geminiModel'), 'Should mention the setting name');
+        assert.ok(message.includes('gemini-3-pro-preview'), 'Should suggest the correct model');
+      }
+    });
+
+    test('should include attempted model name in error message', async () => {
+      const testModel = 'gemini-old-version';
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: testModel
+      });
+
+      const mockModel = (client as any).model;
+      sinon.stub(mockModel, 'generateContent').rejects(
+        new Error('404: Model not found')
+      );
+
+      try {
+        await client.analyzeCode('test prompt');
+        assert.fail('Should have thrown an error');
+      } catch (error) {
+        assert.ok((error as Error).message.includes(testModel), 'Should include the attempted model name');
+      }
+    });
+
+    test('should not treat network errors as model errors', async () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: 'gemini-3-pro-preview'
+      });
+
+      const mockModel = (client as any).model;
+      sinon.stub(mockModel, 'generateContent').rejects(
+        new Error('fetch failed')
+      );
+
+      try {
+        await client.analyzeCode('test prompt');
+        assert.fail('Should have thrown an error');
+      } catch (error) {
+        assert.ok(error instanceof CodeCryptError, 'Should throw CodeCryptError');
+        assert.notStrictEqual((error as CodeCryptError).code, 'GEMINI_MODEL_NOT_FOUND', 'Should not be model not found error');
+        assert.ok((error as Error).message.includes('network'), 'Should be a network error');
+      }
+    });
+
+    test('should handle generic errors without special treatment', async () => {
+      const client = new GeminiClient({
+        apiKey: 'test-key',
+        model: 'gemini-3-pro-preview'
+      });
+
+      const mockModel = (client as any).model;
+      sinon.stub(mockModel, 'generateContent').rejects(
+        new Error('Some other error')
+      );
+
+      try {
+        await client.analyzeCode('test prompt');
+        assert.fail('Should have thrown an error');
+      } catch (error) {
+        assert.ok(error instanceof CodeCryptError, 'Should throw CodeCryptError');
+        assert.ok((error as Error).message.includes('Some other error'), 'Should include original error message');
+      }
     });
   });
 });

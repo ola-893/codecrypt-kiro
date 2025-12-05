@@ -1,0 +1,450 @@
+/**
+ * Integration Test: pnpm Lockfile Parsing
+ * 
+ * Tests pnpm lockfile (pnpm-lock.yaml) parsing with URL-based dependencies.
+ * Validates parsing, extraction, and regeneration functionality.
+ * 
+ * Requirements: 1.1, 4.1-4.2
+ */
+
+import * as assert from 'assert';
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import { createLockfileParser } from '../services/lockfileParser';
+import { getLogger } from '../utils/logger';
+
+const logger = getLogger();
+
+describe('pnpm Lockfile Parsing Integration Tests', () => {
+  let testRepoPath: string;
+  let lockfileParser: ReturnType<typeof createLockfileParser>;
+
+  beforeEach(async () => {
+    // Create temporary test directory
+    testRepoPath = await fs.mkdtemp(path.join(os.tmpdir(), 'codecrypt-pnpm-lockfile-test-'));
+    lockfileParser = createLockfileParser();
+    logger.info(`Created test repo at: ${testRepoPath}`);
+  });
+
+  afterEach(async () => {
+    // Clean up test directory
+    try {
+      await fs.rm(testRepoPath, { recursive: true, force: true });
+      logger.info(`Cleaned up test repo: ${testRepoPath}`);
+    } catch (error) {
+      logger.error('Failed to clean up test repo', error);
+    }
+  });
+
+  /**
+   * Test 1: Parse pnpm lockfile with URL-based dependency
+   * Validates: Requirements 1.1, 4.1
+   */
+  it('should parse pnpm lockfile and extract URL-based dependencies', async () => {
+    // Create package.json
+    const packageJson = {
+      name: 'test-repo',
+      version: '1.0.0',
+      dependencies: {
+        'querystring': 'https://github.com/substack/querystring/archive/0.2.0-ie8.tar.gz'
+      }
+    };
+    await fs.writeFile(
+      path.join(testRepoPath, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    // Create pnpm-lock.yaml with URL dependency
+    const lockfileContent = `lockfileVersion: 5.4
+
+specifiers:
+  querystring: https://github.com/substack/querystring/archive/0.2.0-ie8.tar.gz
+
+dependencies:
+  querystring: 0.2.0
+
+packages:
+
+  /querystring/0.2.0:
+    resolution: {tarball: https://github.com/substack/querystring/archive/0.2.0-ie8.tar.gz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Detect lockfile type
+    const lockfileType = await lockfileParser.detectLockfileType(testRepoPath);
+    assert.strictEqual(lockfileType, 'pnpm', 'Should detect pnpm lockfile');
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify URL-based dependency was extracted
+    assert.ok(transitiveDeps.length > 0, 'Should find at least one URL-based dependency');
+    
+    const querystringDep = transitiveDeps.find(dep => dep.name === 'querystring');
+    assert.ok(querystringDep, 'Should find querystring dependency');
+    assert.strictEqual(
+      querystringDep.resolvedUrl,
+      'https://github.com/substack/querystring/archive/0.2.0-ie8.tar.gz',
+      'Should extract correct URL'
+    );
+    assert.ok(querystringDep.depth >= 0, 'Should have valid depth');
+
+    logger.info('✓ pnpm lockfile parsing successful');
+  });
+
+  /**
+   * Test 2: Parse pnpm lockfile with multiple URL-based dependencies
+   * Validates: Requirements 1.1
+   */
+  it('should extract multiple URL-based dependencies from pnpm lockfile', async () => {
+    // Create pnpm lockfile with multiple URL dependencies
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /package-a/1.0.0:
+    resolution: {tarball: https://github.com/user/package-a/archive/v1.0.0.tar.gz}
+    dev: false
+
+  /package-b/2.0.0:
+    resolution: {tarball: https://github.com/user/package-b/archive/v2.0.0.tar.gz}
+    dev: false
+
+  /package-c/3.0.0:
+    resolution: {tarball: git+https://github.com/user/package-c.git#abc123}
+    dev: false
+
+  /normal-package/1.0.0:
+    resolution: {integrity: sha512-test123, tarball: https://registry.npmjs.org/normal-package/-/normal-package-1.0.0.tgz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify all URL-based dependencies were extracted (but not npm registry ones)
+    assert.strictEqual(transitiveDeps.length, 3, 'Should find exactly 3 URL-based dependencies');
+    
+    const packageNames = transitiveDeps.map(dep => dep.name).sort();
+    assert.deepStrictEqual(
+      packageNames,
+      ['package-a', 'package-b', 'package-c'],
+      'Should extract correct package names'
+    );
+
+    // Verify npm registry package was excluded
+    const normalPackage = transitiveDeps.find(dep => dep.name === 'normal-package');
+    assert.strictEqual(normalPackage, undefined, 'Should not include npm registry packages');
+
+    logger.info('✓ Multiple URL-based dependencies extracted successfully');
+  });
+
+  /**
+   * Test 3: Delete pnpm lockfile
+   * Validates: Requirements 4.1
+   */
+  it('should delete pnpm lockfile when requested', async () => {
+    // Create lockfile
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      'lockfileVersion: 5.4\n'
+    );
+
+    // Verify lockfile exists
+    await fs.access(path.join(testRepoPath, 'pnpm-lock.yaml'));
+
+    // Delete lockfiles
+    await lockfileParser.deleteLockfiles(testRepoPath);
+
+    // Verify lockfile was deleted
+    try {
+      await fs.access(path.join(testRepoPath, 'pnpm-lock.yaml'));
+      assert.fail('Lockfile should have been deleted');
+    } catch (error: any) {
+      assert.strictEqual(error.code, 'ENOENT', 'Lockfile should not exist');
+    }
+
+    logger.info('✓ Lockfile deletion successful');
+  });
+
+  /**
+   * Test 4: Handle malformed pnpm lockfile gracefully
+   * Validates: Requirements 1.1
+   */
+  it('should handle malformed pnpm lockfile gracefully', async () => {
+    // Create malformed lockfile (invalid YAML)
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      'lockfileVersion: 5.4\n  invalid: yaml: structure: ['
+    );
+
+    // Parse lockfile (should return empty array and not throw)
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+    
+    // The parser should handle this gracefully and return what it can parse
+    // or return empty array if it can't parse anything
+    assert.ok(Array.isArray(transitiveDeps), 'Should return an array');
+
+    logger.info('✓ Malformed lockfile handled gracefully');
+  });
+
+  /**
+   * Test 5: Extract scoped package names correctly from pnpm lockfile
+   * Validates: Requirements 1.1
+   */
+  it('should extract scoped package names correctly from pnpm lockfile', async () => {
+    // Create lockfile with scoped packages
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /@babel/core/7.0.0:
+    resolution: {tarball: https://github.com/babel/babel/archive/v7.0.0.tar.gz}
+    dev: false
+
+  /@types/node/14.0.0:
+    resolution: {tarball: https://github.com/DefinitelyTyped/DefinitelyTyped/archive/node-14.0.0.tar.gz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify scoped packages were extracted correctly
+    assert.strictEqual(transitiveDeps.length, 2, 'Should find 2 scoped packages');
+    
+    const babelDep = transitiveDeps.find(dep => dep.name === '@babel/core');
+    const typesDep = transitiveDeps.find(dep => dep.name === '@types/node');
+    
+    assert.ok(babelDep, 'Should find @babel/core');
+    assert.ok(typesDep, 'Should find @types/node');
+
+    logger.info('✓ Scoped package names extracted correctly');
+  });
+
+  /**
+   * Test 6: Filter out npm registry URLs from pnpm lockfile
+   * Validates: Requirements 1.1
+   */
+  it('should filter out npm registry URLs and only extract non-registry URLs', async () => {
+    // Create lockfile with mix of registry and non-registry URLs
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /registry-package/1.0.0:
+    resolution: {integrity: sha512-test123, tarball: https://registry.npmjs.org/registry-package/-/registry-package-1.0.0.tgz}
+    dev: false
+
+  /yarn-registry-package/1.0.0:
+    resolution: {integrity: sha512-test456, tarball: https://registry.yarnpkg.com/yarn-registry-package/-/yarn-registry-package-1.0.0.tgz}
+    dev: false
+
+  /github-package/1.0.0:
+    resolution: {tarball: https://github.com/user/github-package/archive/v1.0.0.tar.gz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify only non-registry URLs were extracted
+    assert.strictEqual(transitiveDeps.length, 1, 'Should find only 1 non-registry URL');
+    assert.strictEqual(transitiveDeps[0].name, 'github-package', 'Should extract github-package');
+
+    logger.info('✓ npm registry URLs filtered correctly');
+  });
+
+  /**
+   * Test 7: Handle various URL protocols in pnpm lockfile
+   * Validates: Requirements 1.1
+   */
+  it('should extract dependencies with various URL protocols', async () => {
+    // Create lockfile with different URL protocols
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /https-package/1.0.0:
+    resolution: {tarball: https://example.com/package.tar.gz}
+    dev: false
+
+  /http-package/1.0.0:
+    resolution: {tarball: http://example.com/package.tar.gz}
+    dev: false
+
+  /git-package/1.0.0:
+    resolution: {tarball: git://github.com/user/package.git}
+    dev: false
+
+  /git-https-package/1.0.0:
+    resolution: {tarball: git+https://github.com/user/package.git}
+    dev: false
+
+  /git-http-package/1.0.0:
+    resolution: {tarball: git+http://github.com/user/package.git}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify all URL protocols were recognized
+    assert.strictEqual(transitiveDeps.length, 5, 'Should find all 5 URL-based dependencies');
+    
+    const protocols = transitiveDeps.map(dep => {
+      if (dep.resolvedUrl.startsWith('https://')) {
+        return 'https';
+      }
+      if (dep.resolvedUrl.startsWith('http://')) {
+        return 'http';
+      }
+      if (dep.resolvedUrl.startsWith('git+https://')) {
+        return 'git+https';
+      }
+      if (dep.resolvedUrl.startsWith('git+http://')) {
+        return 'git+http';
+      }
+      if (dep.resolvedUrl.startsWith('git://')) {
+        return 'git';
+      }
+      return 'unknown';
+    }).sort();
+
+    assert.deepStrictEqual(
+      protocols,
+      ['git', 'git+http', 'git+https', 'http', 'https'],
+      'Should recognize all URL protocols'
+    );
+
+    logger.info('✓ Various URL protocols handled correctly');
+  });
+
+  /**
+   * Test 8: Handle pnpm lockfile with nested dependencies
+   * Validates: Requirements 1.1
+   */
+  it('should handle pnpm lockfile with nested transitive dependencies', async () => {
+    // Create pnpm lockfile with nested dependencies
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /parent-package/1.0.0:
+    resolution: {integrity: sha512-test123, tarball: https://registry.npmjs.org/parent-package/-/parent-package-1.0.0.tgz}
+    dependencies:
+      child-package: 1.0.0
+    dev: false
+
+  /child-package/1.0.0:
+    resolution: {tarball: https://github.com/user/child-package/archive/v1.0.0.tar.gz}
+    dependencies:
+      grandchild-package: 1.0.0
+    dev: false
+
+  /grandchild-package/1.0.0:
+    resolution: {tarball: https://github.com/user/grandchild-package/archive/v1.0.0.tar.gz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Verify nested dependencies were extracted
+    assert.ok(transitiveDeps.length >= 2, 'Should find at least 2 URL-based dependencies');
+    
+    const childDep = transitiveDeps.find(dep => dep.name === 'child-package');
+    const grandchildDep = transitiveDeps.find(dep => dep.name === 'grandchild-package');
+    
+    assert.ok(childDep, 'Should find child-package');
+    assert.ok(grandchildDep, 'Should find grandchild-package');
+    
+    // Verify depth is tracked
+    assert.ok(childDep.depth >= 0, 'Child should have valid depth');
+    assert.ok(grandchildDep.depth >= 0, 'Grandchild should have valid depth');
+
+    logger.info('✓ Nested transitive dependencies handled correctly');
+  });
+
+  /**
+   * Test 9: Handle empty pnpm lockfile
+   * Validates: Requirements 1.1
+   */
+  it('should handle empty pnpm lockfile gracefully', async () => {
+    // Create minimal empty lockfile
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages: {}
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Should return empty array for lockfile with no dependencies
+    assert.strictEqual(transitiveDeps.length, 0, 'Should return empty array for empty lockfile');
+
+    logger.info('✓ Empty lockfile handled gracefully');
+  });
+
+  /**
+   * Test 10: Handle pnpm lockfile with only registry dependencies
+   * Validates: Requirements 1.1
+   */
+  it('should return empty array when pnpm lockfile contains only registry dependencies', async () => {
+    // Create lockfile with only npm registry dependencies
+    const lockfileContent = `lockfileVersion: 5.4
+
+packages:
+
+  /express/4.18.0:
+    resolution: {integrity: sha512-test123, tarball: https://registry.npmjs.org/express/-/express-4.18.0.tgz}
+    dev: false
+
+  /lodash/4.17.21:
+    resolution: {integrity: sha512-test456, tarball: https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz}
+    dev: false
+`;
+    await fs.writeFile(
+      path.join(testRepoPath, 'pnpm-lock.yaml'),
+      lockfileContent
+    );
+
+    // Parse lockfile
+    const transitiveDeps = await lockfileParser.parseLockfile(testRepoPath);
+
+    // Should return empty array since all dependencies are from npm registry
+    assert.strictEqual(transitiveDeps.length, 0, 'Should return empty array when all deps are from registry');
+
+    logger.info('✓ Registry-only lockfile handled correctly');
+  });
+});

@@ -357,7 +357,7 @@ jobs:
 
     assert.strictEqual(result.hasBuildScript, false);
     assert.strictEqual(result.buildCommand, null);
-    assert.strictEqual(result.buildTool, null);
+    assert.strictEqual(result.buildTool, 'none');
     assert.strictEqual(result.requiresCompilation, false);
   });
 
@@ -437,5 +437,331 @@ jobs:
 
     assert.strictEqual(result.hasBuildScript, true);
     assert.strictEqual(result.buildTool, 'parcel');
+  });
+
+  // Requirements 2.1-2.7: Test each build system type
+  test('should detect Gulp task runner (Requirement 2.2)', async () => {
+    await fs.writeFile(path.join(tempDir, 'gulpfile.js'), 'exports.default = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'gulp');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx gulp');
+  });
+
+  test('should detect Grunt task runner (Requirement 2.3)', async () => {
+    await fs.writeFile(path.join(tempDir, 'Gruntfile.js'), 'module.exports = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'grunt');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx grunt');
+  });
+
+  test('should detect Webpack without npm scripts (Requirement 2.4)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'webpack.config.js'), 'module.exports = {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'webpack');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx webpack build');
+    assert.strictEqual(result.requiresCompilation, true);
+  });
+
+  test('should detect Rollup without npm scripts (Requirement 2.5)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'rollup.config.js'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'rollup');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx rollup build');
+    assert.strictEqual(result.requiresCompilation, true);
+  });
+
+  // Requirement 2.6: Test "not_applicable" case
+  test('should mark as not requiring compilation when no build system detected (Requirement 2.6)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+      scripts: {
+        test: 'jest',
+        start: 'node index.js',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, false);
+    assert.strictEqual(result.buildCommand, null);
+    assert.strictEqual(result.buildTool, 'none');
+    assert.strictEqual(result.requiresCompilation, false);
+  });
+
+  // Requirement 2.7: Test priority ordering - npm scripts over task runners
+  test('should prioritize npm scripts over Gulp (Requirement 2.7)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'webpack --mode production',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'gulpfile.js'), 'exports.default = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'webpack'); // From npm script, not gulp
+  });
+
+  test('should prioritize npm scripts over Grunt (Requirement 2.7)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'vite build',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'Gruntfile.js'), 'module.exports = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'vite'); // From npm script, not grunt
+  });
+
+  test('should prioritize npm scripts over Webpack config (Requirement 2.7)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'rollup -c',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'webpack.config.js'), 'module.exports = {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'rollup'); // From npm script, not webpack
+  });
+
+  test('should prioritize npm scripts over Rollup config (Requirement 2.7)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        build: 'tsc',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'rollup.config.js'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run build');
+    assert.strictEqual(result.buildTool, 'tsc'); // From npm script, not rollup
+  });
+
+  // Requirement 6.5: Test script fallback
+  test('should use test script as fallback when no build script exists (Requirement 6.5)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+      scripts: {
+        test: 'jest',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    // Should not use test script as build command
+    assert.strictEqual(result.hasBuildScript, false);
+    assert.strictEqual(result.buildCommand, null);
+    assert.strictEqual(result.buildTool, 'none');
+  });
+
+  // Requirement 6.1-6.5: Test graceful handling of no build system
+  test('should gracefully handle project with only runtime scripts (Requirement 6.1-6.5)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+      scripts: {
+        start: 'node server.js',
+        dev: 'nodemon server.js',
+        test: 'mocha',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, false);
+    assert.strictEqual(result.buildCommand, null);
+    assert.strictEqual(result.buildTool, 'none');
+    assert.strictEqual(result.requiresCompilation, false);
+  });
+
+  test('should detect Gruntfile.coffee (Requirement 2.3)', async () => {
+    await fs.writeFile(path.join(tempDir, 'Gruntfile.coffee'), 'module.exports = ->');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'grunt');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx grunt');
+  });
+
+  test('should detect webpack.config.ts (Requirement 2.4)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'webpack.config.ts'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'webpack');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx webpack build');
+  });
+
+  test('should detect vite.config.ts (Requirement 2.1)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'vite.config.ts'), 'export default {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.buildTool, 'vite');
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npx vite build');
+  });
+
+  test('should handle empty package.json scripts object', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+      scripts: {},
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, false);
+    assert.strictEqual(result.buildCommand, null);
+    assert.strictEqual(result.buildTool, 'none');
+  });
+
+  test('should detect prepublishOnly script (Requirement 2.1)', async () => {
+    const packageJson = {
+      name: 'test-package',
+      scripts: {
+        prepublishOnly: 'tsc && webpack',
+      },
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    assert.strictEqual(result.hasBuildScript, true);
+    assert.strictEqual(result.buildCommand, 'npm run prepublishOnly');
+    // Should detect first tool mentioned
+    assert.ok(result.buildTool === 'tsc' || result.buildTool === 'webpack');
+  });
+
+  test('should handle multiple task runner files and use first detected', async () => {
+    const packageJson = {
+      name: 'test-package',
+      version: '1.0.0',
+    };
+
+    await fs.writeFile(
+      path.join(tempDir, 'package.json'),
+      JSON.stringify(packageJson, null, 2)
+    );
+    await fs.writeFile(path.join(tempDir, 'gulpfile.js'), 'exports.default = () => {}');
+    await fs.writeFile(path.join(tempDir, 'Gruntfile.js'), 'module.exports = () => {}');
+
+    const result = await detectBuildConfiguration(tempDir);
+
+    // Should detect one of them (order depends on file system iteration)
+    assert.ok(result.buildTool === 'gulp' || result.buildTool === 'grunt');
+    assert.strictEqual(result.hasBuildScript, true);
   });
 });

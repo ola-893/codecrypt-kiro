@@ -40,6 +40,10 @@ export interface ResurrectionState {
   finalCompilation: CompilationResult | null;
   resurrectionVerdict: ResurrectionVerdict | null;
   
+  // Git history for Ghost Tour
+  gitCommits: GitCommit[];
+  fileHistories: FileHistory[];
+  
   // Connection status
   isConnected: boolean;
   
@@ -62,6 +66,7 @@ export type ResurrectionAction =
   | { type: 'SET_BASELINE_COMPILATION'; payload: CompilationResult }
   | { type: 'SET_FINAL_COMPILATION'; payload: CompilationResult }
   | { type: 'SET_RESURRECTION_VERDICT'; payload: ResurrectionVerdict }
+  | { type: 'SET_GIT_HISTORY'; payload: { commits: GitCommit[]; fileHistories: FileHistory[] } }
   | { type: 'RESET_STATE' };
 
 /**
@@ -78,6 +83,8 @@ const initialState: ResurrectionState = {
   baselineCompilation: null,
   finalCompilation: null,
   resurrectionVerdict: null,
+  gitCommits: [],
+  fileHistories: [],
   isConnected: false,
   status: 'idle',
 };
@@ -157,6 +164,13 @@ function resurrectionReducer(
         ...state,
         resurrectionVerdict: action.payload,
         status: action.payload.resurrected ? 'complete' : state.status,
+      };
+
+    case 'SET_GIT_HISTORY':
+      return {
+        ...state,
+        gitCommits: action.payload.commits,
+        fileHistories: action.payload.fileHistories,
       };
 
     case 'RESET_STATE':

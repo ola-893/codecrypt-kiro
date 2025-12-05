@@ -30,6 +30,7 @@ import { BatchPlanner } from './batchPlanner';
 import { NpmBatchExecutor } from './batchExecutor';
 import { PackageReplacementRegistry } from './packageReplacementRegistry';
 import { PackageReplacementExecutor } from './packageReplacementExecutor';
+import { fetchGitHistoryData } from './gitHistory';
 
 const logger = getLogger();
 
@@ -304,6 +305,43 @@ export class ResurrectionOrchestrator {
   }
 
   /**
+   * Fetch and emit git history for Ghost Tour
+   */
+  async fetchGitHistory(): Promise<void> {
+    if (!this.state.context.repoPath) {
+      logger.warn('No repository path set, skipping git history');
+      return;
+    }
+
+    logger.info('Fetching git history for Ghost Tour visualization');
+    this.eventEmitter.emitNarration({
+      message: 'Loading git history for 3D code visualization...',
+    });
+
+    try {
+      const { commits, fileHistories } = await fetchGitHistoryData(this.state.context.repoPath);
+
+      // Emit git history event
+      this.eventEmitter.emitGitHistoryLoaded({
+        commits,
+        fileHistories,
+        totalCommits: commits.length,
+      });
+
+      logger.info(`Git history loaded: ${commits.length} commits, ${fileHistories.length} files`);
+      this.eventEmitter.emitNarration({
+        message: `Loaded ${commits.length} commits and ${fileHistories.length} file histories for visualization.`,
+      });
+    } catch (error: any) {
+      logger.error('Failed to fetch git history', error);
+      this.eventEmitter.emitNarration({
+        message: 'Git history loading failed, continuing without 3D visualization.',
+        category: 'warning',
+      });
+    }
+  }
+
+  /**
    * Run hybrid analysis (AST + LLM)
    */
   async runHybridAnalysis(): Promise<HybridAnalysis | undefined> {
@@ -363,7 +401,7 @@ export class ResurrectionOrchestrator {
           const secureConfig = getSecureConfig();
           const config = vscode.workspace.getConfiguration('codecrypt');
           const preferredProvider = config.get<string>('llmProvider', 'anthropic');
-          const geminiModel = config.get<string>('geminiModel', 'gemini-3.0-pro'); // Support custom Gemini model
+          const geminiModel = config.get<string>('geminiModel', 'gemini-3-pro-preview'); // Support custom Gemini model
 
           let llmClient: LLMClient | GeminiClient | undefined;
           let usedProvider: string | undefined;

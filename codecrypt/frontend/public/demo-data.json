@@ -1,0 +1,461 @@
+{
+  "projectName": "CodeCrypt Demo - Jison Parser",
+  "status": "resurrecting",
+  "events": [
+    {
+      "type": "narration",
+      "data": {
+        "message": "Starting resurrection of abandoned repository...",
+        "category": "info"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 0,
+        "vulnsFixed": 1,
+        "complexity": 125,
+        "coverage": 0.45,
+        "loc": 8420,
+        "progress": 0.0
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Analyzing 11 dependencies... Found 10 outdated packages.",
+        "category": "info"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "esprima",
+        "from": "1.0.x",
+        "to": "4.0.1",
+        "reason": "Major version update available"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 1,
+        "vulnsFixed": 3,
+        "complexity": 120,
+        "coverage": 0.5,
+        "loc": 8420,
+        "progress": 0.09090909090909091
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Updated esprima from 1.0.x to 4.0.1",
+        "category": "success"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "escodegen",
+        "from": "0.0.21",
+        "to": "2.1.0",
+        "reason": "Major version update available"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 2,
+        "vulnsFixed": 5,
+        "complexity": 115,
+        "coverage": 0.55,
+        "loc": 8420,
+        "progress": 0.18181818181818182
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Updated escodegen from 0.0.21 to 2.1.0",
+        "category": "success"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "uglify-js",
+        "from": "1.3.3",
+        "to": "3.19.3",
+        "reason": "Security vulnerabilities fixed"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 3,
+        "vulnsFixed": 8,
+        "complexity": 110,
+        "coverage": 0.6,
+        "loc": 8420,
+        "progress": 0.2727272727272727
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Patched 3 security vulnerabilities in uglify-js",
+        "category": "success"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "browserify",
+        "from": "2.x.x",
+        "to": "17.0.1",
+        "reason": "Major version update available"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 4,
+        "vulnsFixed": 9,
+        "complexity": 105,
+        "coverage": 0.65,
+        "loc": 8420,
+        "progress": 0.36363636363636365
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Updated browserify from 2.x.x to 17.0.1",
+        "category": "success"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "jison-lex",
+        "from": "0.2.x",
+        "to": "0.3.4",
+        "reason": "Minor version update"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 5,
+        "vulnsFixed": 10,
+        "complexity": 102,
+        "coverage": 0.68,
+        "loc": 8420,
+        "progress": 0.45454545454545453
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Updated jison-lex from 0.2.x to 0.3.4",
+        "category": "success"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "nomnom",
+        "from": "1.5.2",
+        "to": "1.8.1",
+        "reason": "Patch version update"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 6,
+        "vulnsFixed": 10,
+        "complexity": 100,
+        "coverage": 0.7,
+        "loc": 8420,
+        "progress": 0.5454545454545454
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Updated nomnom from 1.5.2 to 1.8.1",
+        "category": "success"
+      }
+    },
+    {
+      "type": "ast_analysis_complete",
+      "data": {
+        "filesAnalyzed": 42,
+        "functionsFound": 156,
+        "classesFound": 12,
+        "averageComplexity": 8.5,
+        "hotspots": [
+          {
+            "file": "lib/parser.js",
+            "complexity": 45
+          },
+          {
+            "file": "lib/lexer.js",
+            "complexity": 38
+          }
+        ]
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "AST analysis complete. Identified 2 complexity hotspots.",
+        "category": "info"
+      }
+    },
+    {
+      "type": "llm_insight",
+      "data": {
+        "insight": "The parser module shows high cyclomatic complexity. Consider refactoring into smaller functions.",
+        "confidence": 0.85,
+        "category": "code_quality"
+      }
+    },
+    {
+      "type": "transformation_applied",
+      "data": {
+        "type": "dependency_update",
+        "package": "test",
+        "from": "0.4.4",
+        "to": "3.3.0",
+        "reason": "Major version update available"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 7,
+        "vulnsFixed": 11,
+        "complexity": 98,
+        "coverage": 0.75,
+        "loc": 8420,
+        "progress": 0.6363636363636364
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "All vulnerabilities patched! Repository is now secure.",
+        "category": "success"
+      }
+    },
+    {
+      "type": "validation_complete",
+      "data": {
+        "success": true,
+        "testsRun": 45,
+        "testsPassed": 45,
+        "testsFailed": 0,
+        "compilationSuccess": true
+      }
+    },
+    {
+      "type": "narration",
+      "data": {
+        "message": "Resurrection complete! All tests passing. Code quality improved by 22%.",
+        "category": "success"
+      }
+    },
+    {
+      "type": "metric_updated",
+      "data": {
+        "timestamp": 1764944191066,
+        "depsUpdated": 10,
+        "vulnsFixed": 11,
+        "complexity": 98,
+        "coverage": 0.78,
+        "loc": 8420,
+        "progress": 0.9090909090909091
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp": "2013-01-15T10:00:00Z",
+      "event": "Initial commit",
+      "type": "commit",
+      "metrics": {
+        "complexity": 50,
+        "coverage": 0.3,
+        "vulnsFixed": 0,
+        "dependencies": 5
+      }
+    },
+    {
+      "timestamp": "2013-03-20T14:30:00Z",
+      "event": "Added lexer support",
+      "type": "commit",
+      "metrics": {
+        "complexity": 85,
+        "coverage": 0.4,
+        "vulnsFixed": 2,
+        "dependencies": 8
+      }
+    },
+    {
+      "timestamp": "2013-06-08T09:15:00Z",
+      "event": "Last commit before abandonment",
+      "type": "commit",
+      "metrics": {
+        "complexity": 125,
+        "coverage": 0.55,
+        "vulnsFixed": 12,
+        "dependencies": 38
+      }
+    },
+    {
+      "timestamp": "2024-12-05T13:00:00Z",
+      "event": "Resurrection started",
+      "type": "resurrection",
+      "metrics": {
+        "complexity": 45,
+        "coverage": 0.72,
+        "vulnsFixed": 3,
+        "dependencies": 42
+      }
+    }
+  ],
+  "narrationEvents": [
+    {
+      "timestamp": "2024-12-05T13:00:00Z",
+      "message": "Beginning resurrection of abandoned codebase...",
+      "type": "info"
+    },
+    {
+      "timestamp": "2024-12-05T13:01:00Z",
+      "message": "Analyzing 15,420 lines of code across 127 files",
+      "type": "analysis"
+    },
+    {
+      "timestamp": "2024-12-05T13:02:00Z",
+      "message": "Detected 12 critical vulnerabilities in dependencies",
+      "type": "warning"
+    },
+    {
+      "timestamp": "2024-12-05T13:03:00Z",
+      "message": "Updating React from version 16.8 to 18.3",
+      "type": "update"
+    },
+    {
+      "timestamp": "2024-12-05T13:04:00Z",
+      "message": "Modernizing deprecated API calls",
+      "type": "transformation"
+    },
+    {
+      "timestamp": "2024-12-05T13:05:00Z",
+      "message": "Running test suite... 89% passing",
+      "type": "test"
+    },
+    {
+      "timestamp": "2024-12-05T13:06:00Z",
+      "message": "Patching security vulnerabilities",
+      "type": "security"
+    },
+    {
+      "timestamp": "2024-12-05T13:07:00Z",
+      "message": "Resurrection complete! Code is now alive and modern.",
+      "type": "success"
+    }
+  ],
+  "gitHistory": [
+    {
+      "sha": "abc123",
+      "date": "2020-01-15T10:00:00Z",
+      "message": "Initial commit",
+      "author": "Original Developer",
+      "filesChanged": [
+        {
+          "path": "src/index.js",
+          "additions": 50,
+          "deletions": 0
+        },
+        {
+          "path": "src/utils.js",
+          "additions": 30,
+          "deletions": 0
+        }
+      ]
+    },
+    {
+      "sha": "def456",
+      "date": "2020-06-20T14:30:00Z",
+      "message": "Added authentication system",
+      "author": "Original Developer",
+      "filesChanged": [
+        {
+          "path": "src/auth.js",
+          "additions": 120,
+          "deletions": 0
+        },
+        {
+          "path": "src/index.js",
+          "additions": 25,
+          "deletions": 10
+        }
+      ]
+    },
+    {
+      "sha": "ghi789",
+      "date": "2021-03-10T09:15:00Z",
+      "message": "Major refactoring",
+      "author": "Original Developer",
+      "filesChanged": [
+        {
+          "path": "src/index.js",
+          "additions": 80,
+          "deletions": 60
+        },
+        {
+          "path": "src/utils.js",
+          "additions": 40,
+          "deletions": 20
+        },
+        {
+          "path": "src/api.js",
+          "additions": 150,
+          "deletions": 0
+        }
+      ]
+    }
+  ],
+  "compilationProof": {
+    "status": "success",
+    "timestamp": "2024-12-05T13:07:30Z",
+    "buildTime": 3.2,
+    "testsRun": 156,
+    "testsPassed": 139,
+    "testsFailed": 0,
+    "testsSkipped": 17,
+    "coverage": 72.5,
+    "errors": [],
+    "warnings": [
+      "Deprecated API usage in src/legacy.js:45"
+    ]
+  }
+}

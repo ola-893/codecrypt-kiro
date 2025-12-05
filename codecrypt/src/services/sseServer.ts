@@ -72,6 +72,7 @@ export class SSEServer {
         'baseline_compilation_complete',
         'final_compilation_complete',
         'resurrection_verdict',
+        'git_history_loaded',
         // Post-resurrection validation events
         'validation_iteration_start',
         'validation_error_analysis',
@@ -253,6 +254,11 @@ export class SSEServer {
     // Forward resurrection_verdict events
     this.eventEmitter.onResurrectionVerdict((event) => {
       this.broadcastEvent('resurrection_verdict', event);
+    });
+
+    // Forward git_history_loaded events
+    this.eventEmitter.on('git_history_loaded', (event) => {
+      this.broadcastEvent('git_history_loaded', event);
     });
 
     // Forward post-resurrection validation events

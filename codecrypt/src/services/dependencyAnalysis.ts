@@ -352,6 +352,109 @@ export function buildDependencyReport(dependencies: DependencyInfo[]): import('.
 }
 
 /**
+ * Non-registry dependency information
+ */
+export interface NonRegistryDependency {
+  name: string;
+  version: string;
+  sourceType: 'http' | 'https' | 'git' | 'git+http' | 'git+https' | 'github' | 'file' | 'unknown';
+}
+
+/**
+ * Detects if a dependency version string uses a non-registry URL
+ * @param version Version string from package.json
+ * @returns true if the version is a non-registry URL
+ */
+export function isNonRegistryUrl(version: string): boolean {
+  if (!version || version.trim().length === 0) {
+    return false;
+  }
+  
+  // Check for URL-based sources
+  return version.startsWith('http://') ||
+         version.startsWith('https://') ||
+         version.startsWith('git://') ||
+         version.startsWith('git+http://') ||
+         version.startsWith('git+https://') ||
+         version.startsWith('github:') ||
+         version.startsWith('file:');
+}
+
+/**
+ * Determines the source type of a non-registry dependency
+ * @param version Version string from package.json
+ * @returns Source type classification
+ */
+export function getNonRegistrySourceType(version: string): NonRegistryDependency['sourceType'] {
+  if (version.startsWith('http://')) {
+    return 'http';
+  }
+  if (version.startsWith('https://')) {
+    return 'https';
+  }
+  if (version.startsWith('git+https://')) {
+    return 'git+https';
+  }
+  if (version.startsWith('git+http://')) {
+    return 'git+http';
+  }
+  if (version.startsWith('git://')) {
+    return 'git';
+  }
+  if (version.startsWith('github:')) {
+    return 'github';
+  }
+  if (version.startsWith('file:')) {
+    return 'file';
+  }
+  return 'unknown';
+}
+
+/**
+ * Detects all non-registry URL dependencies in package.json
+ * @param packageJson Parsed package.json object
+ * @returns Array of non-registry dependencies
+ */
+export function detectNonRegistryDependencies(packageJson: PackageJson): NonRegistryDependency[] {
+  const nonRegistryDeps: NonRegistryDependency[] = [];
+  
+  // Check regular dependencies
+  if (packageJson.dependencies) {
+    for (const [name, version] of Object.entries(packageJson.dependencies)) {
+      if (isNonRegistryUrl(version)) {
+        nonRegistryDeps.push({
+          name,
+          version,
+          sourceType: getNonRegistrySourceType(version)
+        });
+      }
+    }
+  }
+  
+  // Check dev dependencies
+  if (packageJson.devDependencies) {
+    for (const [name, version] of Object.entries(packageJson.devDependencies)) {
+      if (isNonRegistryUrl(version)) {
+        nonRegistryDeps.push({
+          name,
+          version,
+          sourceType: getNonRegistrySourceType(version)
+        });
+      }
+    }
+  }
+  
+  if (nonRegistryDeps.length > 0) {
+    logger.warn(`Found ${nonRegistryDeps.length} non-registry dependencies:`);
+    nonRegistryDeps.forEach(dep => {
+      logger.warn(`  ${dep.name}: ${dep.version} (${dep.sourceType})`);
+    });
+  }
+  
+  return nonRegistryDeps;
+}
+
+/**
  * Performs complete dependency analysis on a repository
  * @param repoPath Path to the cloned repository
  * @returns DependencyReport object

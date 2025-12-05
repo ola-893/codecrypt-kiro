@@ -8,7 +8,7 @@
  * zcourts/puewue-frontend repository that was used in the demo.
  * 
  * Verification Points:
- * 1. Gemini API works with gemini-3.0-pro or falls back gracefully
+ * 1. Gemini API works with gemini-3-pro-preview or falls back gracefully
  * 2. Dead querystring URL is handled
  * 3. Missing build script doesn't cause validation loop
  * 4. Partial success is reported correctly
@@ -25,7 +25,7 @@ console.log();
 
 // Verification checklist
 const verifications = {
-  geminiConfig: { status: 'pending', description: 'Gemini API configuration uses gemini-3.0-pro' },
+  geminiConfig: { status: 'pending', description: 'Gemini API configuration uses gemini-3-pro-preview' },
   fallbackLogic: { status: 'pending', description: 'LLM provider fallback logic exists' },
   deadUrlHandler: { status: 'pending', description: 'Dead URL handler service exists' },
   buildDetection: { status: 'pending', description: 'Build configuration detection exists' },
@@ -46,14 +46,12 @@ function verifyGeminiConfig() {
     const llmAnalysisPath = path.join(__dirname, 'src', 'services', 'llmAnalysis.ts');
     const content = fs.readFileSync(llmAnalysisPath, 'utf-8');
     
-    // Check for gemini-3.0-pro or gemini-1.5-flash-latest
-    const hasCorrectModel = content.includes('gemini-3.0-pro') || 
-                           content.includes('gemini-1.5-flash-latest') ||
-                           content.includes('gemini-1.5-pro');
+    // Check for gemini-3-pro-preview (current default model)
+    const hasCorrectModel = content.includes('gemini-3-pro-preview');
     
     if (hasCorrectModel) {
       verifications.geminiConfig.status = 'pass';
-      console.log('   ✓ Gemini model configuration is correct');
+      console.log('   ✓ Gemini model configuration is correct (gemini-3-pro-preview)');
     } else {
       verifications.geminiConfig.status = 'fail';
       console.log('   ✗ Gemini model configuration may be incorrect');

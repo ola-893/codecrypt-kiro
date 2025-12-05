@@ -18,6 +18,7 @@ import {
   BaselineCompilationCompleteEventData,
   FinalCompilationCompleteEventData,
   ResurrectionVerdictEventData,
+  GitHistoryLoadedEventData,
   // Post-resurrection validation event types
   ValidationIterationStartEventData,
   ValidationErrorAnalysisEventData,
@@ -117,6 +118,13 @@ export class ResurrectionEventEmitter extends EventEmitter {
    */
   emitResurrectionVerdict(data: ResurrectionVerdictEventData): void {
     this.emitEvent('resurrection_verdict', data);
+  }
+
+  /**
+   * Emit a git history loaded event
+   */
+  emitGitHistoryLoaded(data: any): void {
+    this.emitEvent('git_history_loaded', data);
   }
 
   // ============================================================================

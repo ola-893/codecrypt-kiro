@@ -5,7 +5,7 @@
 ### 1. Gemini API Network Failures ❌ CRITICAL
 **Problem:** All Gemini API calls are failing with `fetch failed` errors
 ```
-[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent: fetch failed
+[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent: fetch failed
 TypeError: fetch failed
 ```
 

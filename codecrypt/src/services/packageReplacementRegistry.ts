@@ -18,6 +18,20 @@ import { Logger } from '../utils/logger';
 const logger = new Logger('PackageReplacementRegistry');
 
 /**
+ * Dead URL pattern for automatic replacement
+ */
+export interface DeadUrlPattern {
+  /** URL pattern (supports wildcards * and **) */
+  pattern: string;
+  /** Replacement package name (null to attempt npm lookup) */
+  replacementPackage: string | null;
+  /** Replacement version (null to use latest) */
+  replacementVersion: string | null;
+  /** Reason for replacement */
+  reason: string;
+}
+
+/**
  * Default registry content with common package replacements
  */
 const DEFAULT_REGISTRY: ReplacementRegistrySchema = {
@@ -165,6 +179,49 @@ export class PackageReplacementRegistry implements IPackageReplacementRegistry {
    */
   getKnownDeadUrls(): string[] {
     return [...this.registry.knownDeadUrls];
+  }
+
+  /**
+   * Get all dead URL patterns from registry
+   * Requirements: 3.1
+   */
+  getDeadUrlPatterns(): DeadUrlPattern[] {
+    const patterns = (this.registry as any).deadUrlPatterns;
+    return patterns ? [...patterns] : [];
+  }
+
+  /**
+   * Check if a URL matches a known dead URL pattern
+   * Requirements: 3.2, 3.4
+   */
+  matchesDeadUrlPattern(url: string): DeadUrlPattern | null {
+    const patterns = this.getDeadUrlPatterns();
+    
+    for (const pattern of patterns) {
+      if (this.urlMatchesPattern(url, pattern.pattern)) {
+        logger.info(`URL matches dead URL pattern: ${pattern.pattern}`);
+        return pattern;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if a URL matches a pattern (supports wildcards)
+   */
+  private urlMatchesPattern(url: string, pattern: string): boolean {
+    // Convert glob-style pattern to regex
+    // * matches any characters except /
+    // ** matches any characters including /
+    const regexPattern = pattern
+      .replace(/\./g, '\\.')  // Escape dots
+      .replace(/\*\*/g, '___DOUBLESTAR___')  // Temporarily replace **
+      .replace(/\*/g, '[^/]*')  // * matches anything except /
+      .replace(/___DOUBLESTAR___/g, '.*');  // ** matches anything
+    
+    const regex = new RegExp(regexPattern);
+    return regex.test(url);
   }
 
   /**

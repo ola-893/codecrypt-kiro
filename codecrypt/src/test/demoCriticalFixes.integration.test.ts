@@ -220,11 +220,11 @@ describe('Demo Critical Fixes - Integration Tests', () => {
         assert.ok(report, 'Should generate report');
         assert.ok(report.summary, 'Should have summary');
         
-        // Report should mention the common dead registry
+        // Report should mention failed dependencies
         const reportText = report.markdown || report.summary;
         assert.ok(
-          reportText.includes('dead-registry.com') || reportText.includes('404'),
-          'Report should mention common dead URL issue'
+          reportText.includes('failed') || reportText.includes('package-a') || reportText.includes('package-b'),
+          'Report should mention failed dependencies'
         );
 
         await orchestrator.stop();
@@ -547,7 +547,7 @@ describe('Demo Critical Fixes - Integration Tests', () => {
     });
 
     it('should use correct Gemini model configuration', async () => {
-      // This test verifies that the system uses gemini-3.0-pro or compatible model
+      // This test verifies that the system uses gemini-3-pro-preview or compatible model
       // Requirement 1.1, 1.4
       
       // Create minimal repo

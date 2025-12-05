@@ -342,6 +342,7 @@ export async function detectBuildConfiguration(repoPath: string): Promise<BuildC
       { file: 'rollup.config.js', tool: 'rollup' },
       { file: 'gulpfile.js', tool: 'gulp' },
       { file: 'Gruntfile.js', tool: 'grunt' },
+      { file: 'Gruntfile.coffee', tool: 'grunt' },
       { file: 'tsconfig.json', tool: 'tsc' },
     ];
 
@@ -382,7 +383,7 @@ export async function detectBuildConfiguration(repoPath: string): Promise<BuildC
   const config: BuildConfiguration = {
     hasBuildScript,
     buildCommand,
-    buildTool,
+    buildTool: buildTool || 'none',
     requiresCompilation,
   };
 

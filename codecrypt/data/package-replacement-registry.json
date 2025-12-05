@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2024-12-02T00:00:00.000Z",
+  "lastUpdated": "2024-12-04T00:00:00.000Z",
   "replacements": [
     {
       "originalPackage": "node-sass",
@@ -36,5 +36,25 @@
   ],
   "knownDeadUrls": [
     "github.com/substack/querystring"
+  ],
+  "deadUrlPatterns": [
+    {
+      "pattern": "github.com/substack/querystring/*",
+      "replacementPackage": "querystring",
+      "replacementVersion": "^0.2.1",
+      "reason": "Old GitHub tarball URL no longer accessible. Package is available on npm registry."
+    },
+    {
+      "pattern": "*/archive/*.tar.gz",
+      "replacementPackage": null,
+      "replacementVersion": null,
+      "reason": "Generic GitHub archive URLs are often dead. Attempt npm registry lookup."
+    },
+    {
+      "pattern": "github.com/*/*/archive/*",
+      "replacementPackage": null,
+      "replacementVersion": null,
+      "reason": "GitHub archive URLs may be dead or moved. Attempt npm registry lookup."
+    }
   ]
 }

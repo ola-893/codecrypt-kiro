@@ -98,6 +98,7 @@ export type EventType =
   | 'baseline_compilation_complete'
   | 'final_compilation_complete'
   | 'resurrection_verdict'
+  | 'git_history_loaded'
   // Post-resurrection validation events
   | 'validation_iteration_start'
   | 'validation_error_analysis'

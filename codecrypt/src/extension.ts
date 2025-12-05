@@ -260,6 +260,10 @@ export function activate(context: vscode.ExtensionContext) {
 									}
 								}
 
+								// Fetch git history for Ghost Tour
+								reporter.reportProgress('Loading git history');
+								await orchestrator.fetchGitHistory();
+
 								// Run hybrid analysis (works without dependencies)
 								reporter.reportProgress('Running hybrid analysis');
 								const hybridAnalysis = await orchestrator.runHybridAnalysis();

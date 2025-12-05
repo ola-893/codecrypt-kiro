@@ -452,6 +452,7 @@ export type ResurrectionEventType =
   | 'baseline_compilation_complete'
   | 'final_compilation_complete'
   | 'resurrection_verdict'
+  | 'git_history_loaded'
   // Post-resurrection validation events
   | 'validation_iteration_start'
   | 'validation_error_analysis'
@@ -1442,4 +1443,57 @@ export interface BuildConfiguration {
   buildTool: string | null;
   /** Whether the project requires compilation before use */
   requiresCompilation: boolean;
+}
+
+// ============================================================================
+// Git History & Ghost Tour Types
+// ============================================================================
+
+/**
+ * A single git commit
+ */
+export interface GitCommit {
+  /** Commit hash */
+  hash: string;
+  /** Commit date */
+  date: Date;
+  /** Commit message */
+  message: string;
+  /** Commit author */
+  author: string;
+  /** Files changed in this commit */
+  filesChanged: string[];
+}
+
+/**
+ * History of changes to a single file
+ */
+export interface FileHistory {
+  /** File path */
+  path: string;
+  /** Commits that modified this file */
+  commits: Array<{
+    hash: string;
+    date: Date;
+    message: string;
+    changes: number;
+  }>;
+  /** Total number of changes to this file */
+  totalChanges: number;
+  /** Current lines of code */
+  loc: number;
+  /** Current complexity */
+  complexity: number;
+}
+
+/**
+ * Git history loaded event data
+ */
+export interface GitHistoryLoadedEventData {
+  /** List of commits */
+  commits: GitCommit[];
+  /** File histories */
+  fileHistories: FileHistory[];
+  /** Total commits analyzed */
+  totalCommits: number;
 }

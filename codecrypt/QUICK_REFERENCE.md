@@ -25,15 +25,12 @@ CodeCrypt: Configure Gemini API Key
 
 ```json
 {
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
-**Available Models:**
-- `gemini-1.5-flash-latest` ⭐ Recommended
-- `gemini-1.5-pro` - More capable
-- `gemini-3.0-pro` - Latest (requires access)
-- `gemini-pro` - Stable fallback
+**Available Model:**
+- `gemini-3-pro-preview` ⭐ Recommended (default)
 
 ## Fallback Configuration
 
@@ -49,7 +46,7 @@ CodeCrypt: Configure Gemini API Key
    ```json
    {
      "codecrypt.llmProvider": "gemini",
-     "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+     "codecrypt.geminiModel": "gemini-3-pro-preview"
    }
    ```
 
@@ -62,12 +59,12 @@ CodeCrypt: Configure Gemini API Key
 
 ### Gemini 404 Error
 
-**Error:** `404 - Model 'gemini-1.5-flash' not found`
+**Error:** `404 - Model not found`
 
 **Fix:**
 ```json
 {
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -149,7 +146,7 @@ CodeCrypt: Clear All Secrets
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -157,7 +154,7 @@ CodeCrypt: Clear All Secrets
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 Then configure both API keys for automatic fallback.
@@ -208,7 +205,7 @@ CodeCrypt: Configure Gemini API Key
 
 ✅ **Do:**
 - Configure both LLM providers for reliability
-- Use `gemini-1.5-flash-latest` for best compatibility
+- Use `gemini-3-pro-preview` for best compatibility
 - Review partial success reports
 - Check logs for detailed information
 

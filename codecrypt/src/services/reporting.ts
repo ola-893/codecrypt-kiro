@@ -28,6 +28,7 @@ import {
 } from '../types';
 import { getLogger } from '../utils/logger';
 import { CodeCryptError } from '../utils/errors';
+import { DeadUrlHandlingSummary } from './deadUrlHandler';
 
 const logger = getLogger();
 
@@ -68,6 +69,8 @@ export interface ResurrectionReport {
   batchExecutionSummary?: BatchExecutionSummary;
   /** LLM analysis summary */
   llmAnalysisSummary?: LLMAnalysisSummary;
+  /** Dead URL handling summary */
+  deadUrlSummary?: DeadUrlReportSummary;
   /** Markdown formatted report */
   markdown: string;
 }
@@ -230,6 +233,46 @@ export interface LLMAnalysisSummary {
 }
 
 /**
+ * Summary of dead URL handling for reporting
+ * 
+ * _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+ */
+export interface DeadUrlReportSummary {
+  /** Total number of URL-based dependencies checked */
+  totalChecked: number;
+  /** Number of dead URLs found */
+  deadUrlsFound: number;
+  /** Number resolved via npm registry */
+  resolvedViaNpm: number;
+  /** Number removed (unresolvable) */
+  removed: number;
+  /** Results grouped by status */
+  byStatus: {
+    kept: DeadUrlResultDetail[];
+    replaced: DeadUrlResultDetail[];
+    removed: DeadUrlResultDetail[];
+  };
+}
+
+/**
+ * Detailed result for a single dead URL for reporting
+ */
+export interface DeadUrlResultDetail {
+  /** Package name */
+  packageName: string;
+  /** Dead URL */
+  deadUrl: string;
+  /** Replacement version if applicable */
+  npmAlternative?: string;
+  /** Warning message */
+  warning?: string;
+  /** Parent dependency chain (for transitive dependencies) */
+  parentChain?: string[];
+  /** Depth in dependency tree */
+  depth?: number;
+}
+
+/**
  * Options for generating a resurrection report
  */
 export interface ReportGenerationOptions {
@@ -257,6 +300,8 @@ export interface ReportGenerationOptions {
   batchExecutionResults?: BatchExecutionResult[];
   /** LLM analysis results */
   llmAnalysis?: LLMAnalysis;
+  /** Dead URL handling summary */
+  deadUrlHandlingSummary?: DeadUrlHandlingSummary;
 }
 
 /**
@@ -309,6 +354,11 @@ export function generateResurrectionReport(
     ? createLLMAnalysisSummary(options.llmAnalysis, options.hybridAnalysis.astAnalysis.files.length)
     : undefined;
   
+  // Generate dead URL summary if dead URL handling results are available
+  const deadUrlSummary = options.deadUrlHandlingSummary
+    ? createDeadUrlReportSummary(options.deadUrlHandlingSummary)
+    : undefined;
+  
   // Generate markdown report
   const markdown = formatMarkdownReport({
     summary,
@@ -326,7 +376,8 @@ export function generateResurrectionReport(
     dashboardScreenshots: options.dashboardScreenshots,
     validationSummary,
     batchExecutionSummary,
-    llmAnalysisSummary
+    llmAnalysisSummary,
+    deadUrlSummary
   });
   
   logger.info('Resurrection report generated');
@@ -377,6 +428,7 @@ export function generateResurrectionReport(
     validationSummary,
     batchExecutionSummary,
     llmAnalysisSummary,
+    deadUrlSummary,
     markdown
   };
 }
@@ -488,7 +540,9 @@ function generateSummary(
   
   // Add validation status
   if (options.validationResult) {
-    if (options.validationResult.success) {
+    if (options.validationResult.iterations === 0 && options.validationResult.success) {
+      parts.push('ℹ️ compilation validation skipped (no build script)');
+    } else if (options.validationResult.success) {
       parts.push('✅ compilation validation passed');
     } else {
       parts.push(`⚠️ compilation validation incomplete (${options.validationResult.remainingErrors.length} errors remain)`);
@@ -682,6 +736,54 @@ function createLLMAnalysisSummary(
 }
 
 /**
+ * Create a dead URL report summary from dead URL handling results
+ * 
+ * _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+ * 
+ * @param deadUrlSummary Dead URL handling summary
+ * @returns DeadUrlReportSummary for reporting
+ */
+function createDeadUrlReportSummary(
+  deadUrlSummary: DeadUrlHandlingSummary
+): DeadUrlReportSummary {
+  // Group results by status
+  const kept: DeadUrlResultDetail[] = [];
+  const replaced: DeadUrlResultDetail[] = [];
+  const removed: DeadUrlResultDetail[] = [];
+
+  for (const result of deadUrlSummary.results) {
+    const detail: DeadUrlResultDetail = {
+      packageName: result.packageName,
+      deadUrl: result.deadUrl,
+      npmAlternative: result.npmAlternative,
+      warning: result.warning,
+      parentChain: result.parentChain,
+      depth: result.depth
+    };
+
+    if (result.action === 'kept') {
+      kept.push(detail);
+    } else if (result.action === 'replaced') {
+      replaced.push(detail);
+    } else if (result.action === 'removed') {
+      removed.push(detail);
+    }
+  }
+
+  return {
+    totalChecked: deadUrlSummary.totalChecked,
+    deadUrlsFound: deadUrlSummary.deadUrlsFound,
+    resolvedViaNpm: deadUrlSummary.resolvedViaNpm,
+    removed: deadUrlSummary.removed,
+    byStatus: {
+      kept,
+      replaced,
+      removed
+    }
+  };
+}
+
+/**
  * Format the complete markdown report
  */
 function formatMarkdownReport(data: {
@@ -701,6 +803,7 @@ function formatMarkdownReport(data: {
   validationSummary?: ValidationSummary;
   batchExecutionSummary?: BatchExecutionSummary;
   llmAnalysisSummary?: LLMAnalysisSummary;
+  deadUrlSummary?: DeadUrlReportSummary;
 }): string {
   const lines: string[] = [];
   
@@ -1257,6 +1360,116 @@ function formatMarkdownReport(data: {
     }
     
     lines.push('');
+  }
+  
+  // Dead URL Resolution Section
+  // _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
+  if (data.deadUrlSummary && data.deadUrlSummary.totalChecked > 0) {
+    lines.push('## 🔗 Dead URL Resolution');
+    lines.push('');
+    
+    const ds = data.deadUrlSummary;
+    
+    lines.push(`**Total URL-based dependencies checked:** ${ds.totalChecked}`);
+    lines.push(`**Dead URLs found:** ${ds.deadUrlsFound}`);
+    lines.push(`**Resolved via npm registry:** ${ds.resolvedViaNpm}`);
+    lines.push(`**Removed (unresolvable):** ${ds.removed}`);
+    lines.push('');
+    
+    // Resolved (Replaced) URLs
+    if (ds.byStatus.replaced.length > 0) {
+      lines.push('### ✅ Resolved Dead URLs');
+      lines.push('');
+      lines.push('These dependencies had dead URLs that were successfully replaced with npm registry versions:');
+      lines.push('');
+      lines.push('| Package | Dead URL | Replacement | Type |');
+      lines.push('|---------|----------|-------------|------|');
+      
+      for (const result of ds.byStatus.replaced) {
+        const type = result.parentChain && result.parentChain.length > 0 ? 'Transitive' : 'Direct';
+        const replacement = result.npmAlternative || 'N/A';
+        const urlShort = result.deadUrl.length > 50 ? result.deadUrl.substring(0, 47) + '...' : result.deadUrl;
+        lines.push(`| ${result.packageName} | \`${urlShort}\` | ${replacement} | ${type} |`);
+      }
+      lines.push('');
+      
+      // Show parent chains for transitive dependencies
+      const transitiveReplaced = ds.byStatus.replaced.filter(r => r.parentChain && r.parentChain.length > 0);
+      if (transitiveReplaced.length > 0) {
+        lines.push('#### Transitive Dependency Chains');
+        lines.push('');
+        for (const result of transitiveReplaced) {
+          lines.push(`**${result.packageName}** (depth ${result.depth || 0}):`);
+          if (result.parentChain && result.parentChain.length > 0) {
+            lines.push(`- Parent chain: ${result.parentChain.join(' → ')}`);
+          }
+          if (result.warning) {
+            lines.push(`- ${result.warning}`);
+          }
+          lines.push('');
+        }
+      }
+    }
+    
+    // Removed URLs
+    if (ds.byStatus.removed.length > 0) {
+      lines.push('### ❌ Unresolvable Dead URLs');
+      lines.push('');
+      lines.push('These dependencies had dead URLs that could not be resolved and were removed:');
+      lines.push('');
+      lines.push('| Package | Dead URL | Type | Reason |');
+      lines.push('|---------|----------|------|--------|');
+      
+      for (const result of ds.byStatus.removed) {
+        const type = result.parentChain && result.parentChain.length > 0 ? 'Transitive' : 'Direct';
+        const urlShort = result.deadUrl.length > 50 ? result.deadUrl.substring(0, 47) + '...' : result.deadUrl;
+        const reason = result.warning || 'No npm alternative found';
+        lines.push(`| ${result.packageName} | \`${urlShort}\` | ${type} | ${reason} |`);
+      }
+      lines.push('');
+      
+      // Show parent chains for transitive dependencies
+      const transitiveRemoved = ds.byStatus.removed.filter(r => r.parentChain && r.parentChain.length > 0);
+      if (transitiveRemoved.length > 0) {
+        lines.push('#### Transitive Dependency Chains');
+        lines.push('');
+        lines.push('These transitive dependencies were removed. You may need to update or remove their parent dependencies:');
+        lines.push('');
+        for (const result of transitiveRemoved) {
+          lines.push(`**${result.packageName}** (depth ${result.depth || 0}):`);
+          if (result.parentChain && result.parentChain.length > 0) {
+            lines.push(`- Parent chain: ${result.parentChain.join(' → ')}`);
+          }
+          if (result.warning) {
+            lines.push(`- ${result.warning}`);
+          }
+          lines.push('');
+        }
+      }
+      
+      // Add helpful explanation for common problematic sources
+      lines.push('#### 💡 Common Dead URL Sources');
+      lines.push('');
+      lines.push('Dead URLs often come from:');
+      lines.push('- **Old GitHub tarballs**: Packages that moved to npm registry');
+      lines.push('- **Deprecated repositories**: Projects that were archived or deleted');
+      lines.push('- **Changed URLs**: Repositories that moved to different hosting');
+      lines.push('');
+      lines.push('**Recommended Actions:**');
+      lines.push('1. Check if removed packages are still needed');
+      lines.push('2. Search npm registry for alternative packages');
+      lines.push('3. Update parent dependencies to versions that don\'t require these packages');
+      lines.push('4. Consider adding entries to the package replacement registry for future resurrections');
+      lines.push('');
+    }
+    
+    // Kept (Accessible) URLs
+    if (ds.byStatus.kept.length > 0) {
+      lines.push('### ✓ Accessible URLs');
+      lines.push('');
+      lines.push(`${ds.byStatus.kept.length} URL-based ${ds.byStatus.kept.length === 1 ? 'dependency' : 'dependencies'} ${ds.byStatus.kept.length === 1 ? 'remains' : 'remain'} accessible and ${ds.byStatus.kept.length === 1 ? 'was' : 'were'} kept unchanged.`);
+      lines.push('');
+    }
   }
   
   // Security Vulnerabilities Fixed

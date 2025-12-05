@@ -34,10 +34,10 @@ export class CompilationRunner implements ICompilationRunner {
    * @returns Promise resolving to compilation result
    */
   async compile(repoPath: string, options: CompileOptions): Promise<PostResurrectionCompilationResult> {
-    const { packageManager, buildCommand, timeout = DEFAULT_TIMEOUT } = options;
+    const { packageManager, timeout = DEFAULT_TIMEOUT } = options;
     const startTime = Date.now();
 
-    // Check if the project has a build script
+    // Detect build configuration (including task runners)
     const buildConfig = await detectBuildConfiguration(repoPath);
     
     if (!buildConfig.hasBuildScript) {
@@ -48,6 +48,22 @@ export class CompilationRunner implements ICompilationRunner {
         compilationStatus: 'not_applicable',
         exitCode: 0,
         stdout: 'No build script detected. Compilation not required.',
+        stderr: '',
+        duration
+      };
+    }
+
+    // Use detected build command or fall back to provided option
+    const buildCommand = buildConfig.buildCommand || options.buildCommand;
+    
+    if (!buildCommand) {
+      // Build script exists but no command could be determined
+      const duration = Date.now() - startTime;
+      return {
+        success: true,
+        compilationStatus: 'not_applicable',
+        exitCode: 0,
+        stdout: 'Build configuration detected but no executable command found.',
         stderr: '',
         duration
       };

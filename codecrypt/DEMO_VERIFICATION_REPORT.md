@@ -25,13 +25,13 @@ The verification confirms that all requirements from the demo-critical-fixes spe
 
 **Verification:**
 - Checked `src/services/llmAnalysis.ts` for correct model configuration
-- Confirmed use of `gemini-3.0-pro` or compatible models
+- Confirmed use of `gemini-3-pro-preview` or compatible models
 - Model configuration is correct and compatible with current API version
 
 **Evidence:**
 ```typescript
-// llmAnalysis.ts uses gemini-3.0-pro
-model: config.model || 'gemini-3.0-pro'
+// llmAnalysis.ts uses gemini-3-pro-preview
+model: config.model || 'gemini-3-pro-preview'
 ```
 
 ### 2. ✅ LLM Provider Fallback Logic (Requirements 1.3, 5.1, 5.4, 5.5)
@@ -187,7 +187,7 @@ interface ResurrectionResult {
 - Requires LLM analysis for semantic understanding
 
 **Expected Behavior:**
-1. ✅ Gemini API will use `gemini-3.0-pro` model
+1. ✅ Gemini API will use `gemini-3-pro-preview` model
 2. ✅ If Gemini fails, will fall back to Anthropic or AST-only
 3. ✅ Dead querystring URL will be detected and handled
 4. ✅ Missing build script will not cause validation loop

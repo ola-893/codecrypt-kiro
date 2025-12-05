@@ -49,6 +49,27 @@ class MockURLValidator extends URLValidator {
   }
 }
 
+// Mock LockfileParser for testing
+class MockLockfileParser {
+  private mockDependencies: any[] = [];
+
+  setMockDependencies(deps: any[]): void {
+    this.mockDependencies = deps;
+  }
+
+  async parseLockfile(): Promise<any[]> {
+    return this.mockDependencies;
+  }
+
+  async detectLockfileType(): Promise<string | null> {
+    return this.mockDependencies.length > 0 ? 'npm' : null;
+  }
+
+  async deleteLockfiles(): Promise<void> {
+    // Mock implementation
+  }
+}
+
 suite('DeadUrlHandler Unit Tests', () => {
   let tempDir: string;
   let mockValidator: MockURLValidator;
@@ -390,6 +411,379 @@ suite('DeadUrlHandler Unit Tests', () => {
       const report = handler.generateReport(summary);
 
       assert.ok(report.includes('Total URL-based dependencies checked: 0'), 'Should show zero checked');
+    });
+  });
+
+  suite('Transitive Dependency Handling', () => {
+    test('should handle transitive dependencies with dead URLs', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependencies
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'transitive-package',
+          resolvedUrl: 'https://github.com/user/transitive/archive/v1.0.0.tar.gz',
+          parents: ['parent-package'],
+          depth: 2
+        }
+      ]);
+
+      // Mock the URL as dead
+      mockValidator.setMockValidation(
+        'https://github.com/user/transitive/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/transitive/archive/v1.0.0.tar.gz', isValid: false }
+      );
+
+      // Mock npm alternative
+      mockValidator.setMockNpmAlternative('transitive', '1.1.0');
+
+      const directDeps = new Map<string, string>();
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      assert.strictEqual(summary.totalChecked, 1, 'Should check transitive dependency');
+      assert.strictEqual(summary.deadUrlsFound, 1, 'Should find dead URL in transitive');
+      assert.strictEqual(summary.resolvedViaNpm, 1, 'Should resolve via npm');
+
+      const result = summary.results.find(r => r.packageName === 'transitive-package');
+      assert.ok(result, 'Should have result for transitive package');
+      assert.deepStrictEqual(result?.parentChain, ['parent-package'], 'Should include parent chain');
+      assert.strictEqual(result?.depth, 2, 'Should include depth');
+    });
+
+    test('should process transitive dependencies in depth order (deepest first)', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependencies at different depths
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'shallow-dep',
+          resolvedUrl: 'https://github.com/user/shallow/archive/v1.0.0.tar.gz',
+          parents: ['root'],
+          depth: 1
+        },
+        {
+          name: 'deep-dep',
+          resolvedUrl: 'https://github.com/user/deep/archive/v1.0.0.tar.gz',
+          parents: ['root', 'shallow-dep'],
+          depth: 3
+        },
+        {
+          name: 'mid-dep',
+          resolvedUrl: 'https://github.com/user/mid/archive/v1.0.0.tar.gz',
+          parents: ['root'],
+          depth: 2
+        }
+      ]);
+
+      // Mock all URLs as dead
+      for (const dep of ['shallow', 'deep', 'mid']) {
+        mockValidator.setMockValidation(
+          `https://github.com/user/${dep}/archive/v1.0.0.tar.gz`,
+          { url: `https://github.com/user/${dep}/archive/v1.0.0.tar.gz`, isValid: false }
+        );
+        mockValidator.setMockNpmAlternative(dep, '1.0.0');
+      }
+
+      const directDeps = new Map<string, string>();
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      assert.strictEqual(summary.totalChecked, 3, 'Should check all transitive dependencies');
+      
+      // Verify processing order by checking results array
+      // Deep dependencies should be processed first
+      const deepResult = summary.results.find(r => r.packageName === 'deep-dep');
+      const midResult = summary.results.find(r => r.packageName === 'mid-dep');
+      const shallowResult = summary.results.find(r => r.packageName === 'shallow-dep');
+
+      assert.ok(deepResult, 'Should have deep result');
+      assert.ok(midResult, 'Should have mid result');
+      assert.ok(shallowResult, 'Should have shallow result');
+
+      assert.strictEqual(deepResult?.depth, 3, 'Deep dep should have depth 3');
+      assert.strictEqual(midResult?.depth, 2, 'Mid dep should have depth 2');
+      assert.strictEqual(shallowResult?.depth, 1, 'Shallow dep should have depth 1');
+    });
+
+    test('should identify parent chains for transitive dependencies', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependency with multiple parents
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'shared-dep',
+          resolvedUrl: 'https://github.com/user/shared/archive/v1.0.0.tar.gz',
+          parents: ['parent-a', 'parent-b', 'parent-c'],
+          depth: 2
+        }
+      ]);
+
+      // Mock the URL as dead
+      mockValidator.setMockValidation(
+        'https://github.com/user/shared/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/shared/archive/v1.0.0.tar.gz', isValid: false }
+      );
+
+      // Mock no npm alternative (will be removed)
+      mockValidator.setMockNpmAlternative('shared', null);
+
+      const directDeps = new Map<string, string>();
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      const result = summary.results.find(r => r.packageName === 'shared-dep');
+      assert.ok(result, 'Should have result for shared dependency');
+      assert.deepStrictEqual(
+        result?.parentChain,
+        ['parent-a', 'parent-b', 'parent-c'],
+        'Should include all parent packages'
+      );
+      assert.strictEqual(result?.action, 'removed', 'Should mark for removal when no npm alternative');
+    });
+
+    test('should handle transitive dependencies with accessible URLs', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependency with accessible URL
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'accessible-dep',
+          resolvedUrl: 'https://github.com/user/accessible/archive/v1.0.0.tar.gz',
+          parents: ['parent'],
+          depth: 1
+        }
+      ]);
+
+      // Mock the URL as accessible
+      mockValidator.setMockValidation(
+        'https://github.com/user/accessible/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/accessible/archive/v1.0.0.tar.gz', isValid: true, statusCode: 200 }
+      );
+
+      const directDeps = new Map<string, string>();
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      assert.strictEqual(summary.totalChecked, 1, 'Should check transitive dependency');
+      assert.strictEqual(summary.deadUrlsFound, 0, 'Should not find dead URLs');
+      
+      // Accessible transitive dependencies are not added to results
+      const result = summary.results.find(r => r.packageName === 'accessible-dep');
+      assert.strictEqual(result, undefined, 'Should not include accessible transitive deps in results');
+    });
+
+    test('should combine direct and transitive dependency results', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependency
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'transitive-dep',
+          resolvedUrl: 'https://github.com/user/transitive/archive/v1.0.0.tar.gz',
+          parents: ['direct-dep'],
+          depth: 2
+        }
+      ]);
+
+      // Set up direct dependency with dead URL
+      const directDeps = new Map([
+        ['direct-dep', 'https://github.com/user/direct/archive/v1.0.0.tar.gz']
+      ]);
+
+      // Mock both URLs as dead
+      mockValidator.setMockValidation(
+        'https://github.com/user/direct/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/direct/archive/v1.0.0.tar.gz', isValid: false }
+      );
+      mockValidator.setMockValidation(
+        'https://github.com/user/transitive/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/transitive/archive/v1.0.0.tar.gz', isValid: false }
+      );
+
+      // Mock npm alternatives
+      mockValidator.setMockNpmAlternative('direct', '1.0.0');
+      mockValidator.setMockNpmAlternative('transitive', '2.0.0');
+
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      assert.strictEqual(summary.totalChecked, 2, 'Should check both direct and transitive');
+      assert.strictEqual(summary.deadUrlsFound, 2, 'Should find both dead URLs');
+      assert.strictEqual(summary.resolvedViaNpm, 2, 'Should resolve both via npm');
+
+      const directResult = summary.results.find(r => r.packageName === 'direct-dep');
+      const transitiveResult = summary.results.find(r => r.packageName === 'transitive-dep');
+
+      assert.ok(directResult, 'Should have direct dependency result');
+      assert.ok(transitiveResult, 'Should have transitive dependency result');
+      assert.strictEqual(transitiveResult?.depth, 2, 'Transitive should have depth');
+    });
+
+    test('should handle empty lockfile (no transitive dependencies)', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // No transitive dependencies
+      mockLockfileParser.setMockDependencies([]);
+
+      // Set up direct dependency
+      const directDeps = new Map([
+        ['direct-dep', 'https://github.com/user/direct/archive/v1.0.0.tar.gz']
+      ]);
+
+      mockValidator.setMockValidation(
+        'https://github.com/user/direct/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/direct/archive/v1.0.0.tar.gz', isValid: false }
+      );
+      mockValidator.setMockNpmAlternative('direct', '1.0.0');
+
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      assert.strictEqual(summary.totalChecked, 1, 'Should only check direct dependency');
+      assert.strictEqual(summary.results.length, 1, 'Should only have direct result');
+    });
+  });
+
+  suite('Lockfile Regeneration', () => {
+    test('should handle lockfile regeneration errors gracefully', async () => {
+      // This test verifies that regeneration errors don't throw
+      // In real scenarios, npm install might fail for various reasons
+      
+      // The regenerateLockfile method should not throw even if npm install fails
+      await assert.doesNotReject(
+        async () => {
+          // Create a directory without package.json (will cause npm install to fail)
+          const invalidDir = path.join(tempDir, 'invalid');
+          await fs.mkdir(invalidDir, { recursive: true });
+          await handler.regenerateLockfile(invalidDir, 'npm');
+        },
+        'Should not throw on regeneration failure'
+      );
+    });
+
+    test('should support different package managers', async () => {
+      // Test that different package managers are supported
+      // This is a basic test that verifies the method accepts different package managers
+      
+      await assert.doesNotReject(
+        async () => {
+          await handler.regenerateLockfile(tempDir, 'npm');
+        },
+        'Should support npm'
+      );
+
+      await assert.doesNotReject(
+        async () => {
+          await handler.regenerateLockfile(tempDir, 'yarn');
+        },
+        'Should support yarn'
+      );
+
+      await assert.doesNotReject(
+        async () => {
+          await handler.regenerateLockfile(tempDir, 'pnpm');
+        },
+        'Should support pnpm'
+      );
+    });
+  });
+
+  suite('Error Scenarios', () => {
+    test('should handle malformed lockfile by throwing error', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Simulate lockfile parser throwing an error
+      mockLockfileParser.parseLockfile = async () => {
+        throw new Error('Malformed lockfile');
+      };
+
+      const directDeps = new Map([
+        ['direct-dep', 'https://github.com/user/direct/archive/v1.0.0.tar.gz']
+      ]);
+
+      mockValidator.setMockValidation(
+        'https://github.com/user/direct/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/direct/archive/v1.0.0.tar.gz', isValid: false }
+      );
+      mockValidator.setMockNpmAlternative('direct', '1.0.0');
+
+      // Should throw when lockfile parsing fails
+      await assert.rejects(
+        async () => {
+          await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+        },
+        /Malformed lockfile/,
+        'Should propagate lockfile parsing errors'
+      );
+    });
+
+    test('should handle network errors during URL validation by throwing', async () => {
+      const dependencies = new Map([
+        ['network-error-package', 'https://github.com/user/network/archive/v1.0.0.tar.gz']
+      ]);
+
+      // Mock network error
+      mockValidator.validate = async () => {
+        throw new Error('Network timeout');
+      };
+
+      // Should throw network errors
+      await assert.rejects(
+        async () => {
+          await handler.handleDeadUrls(tempDir, dependencies);
+        },
+        /Network timeout/,
+        'Should propagate network errors'
+      );
+    });
+
+    test('should handle missing package.json during apply', async () => {
+      const results = [{
+        packageName: 'some-package',
+        deadUrl: 'https://github.com/user/some/archive/v1.0.0.tar.gz',
+        isUrlDead: true,
+        npmAlternative: '1.0.0',
+        resolved: true,
+        action: 'replaced' as const
+      }];
+
+      // Try to apply to non-existent package.json
+      await assert.rejects(
+        async () => {
+          await handler.applyToPackageJson(tempDir, results);
+        },
+        'Should throw when package.json is missing'
+      );
+    });
+
+    test('should handle transitive dependency with empty parent chain', async () => {
+      const mockLockfileParser = new MockLockfileParser();
+      const handlerWithMock = new DeadUrlHandler(mockValidator, mockLockfileParser as any);
+
+      // Set up mock transitive dependency with empty parent chain
+      mockLockfileParser.setMockDependencies([
+        {
+          name: 'orphan-dep',
+          resolvedUrl: 'https://github.com/user/orphan/archive/v1.0.0.tar.gz',
+          parents: [],
+          depth: 1
+        }
+      ]);
+
+      mockValidator.setMockValidation(
+        'https://github.com/user/orphan/archive/v1.0.0.tar.gz',
+        { url: 'https://github.com/user/orphan/archive/v1.0.0.tar.gz', isValid: false }
+      );
+      mockValidator.setMockNpmAlternative('orphan', '1.0.0');
+
+      const directDeps = new Map<string, string>();
+      const summary = await handlerWithMock.handleDeadUrlsWithTransitive(tempDir, directDeps);
+
+      const result = summary.results.find(r => r.packageName === 'orphan-dep');
+      assert.ok(result, 'Should handle orphan dependency');
+      assert.deepStrictEqual(result?.parentChain, [], 'Should have empty parent chain');
     });
   });
 });

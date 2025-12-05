@@ -11,6 +11,8 @@ import {
   ValidationResult,
   CompilationResult,
   ResurrectionVerdict,
+  GitCommit,
+  FileHistory,
 } from '../types';
 
 /**
@@ -70,6 +72,11 @@ export const setFinalCompilation = (result: CompilationResult): ResurrectionActi
 export const setResurrectionVerdict = (verdict: ResurrectionVerdict): ResurrectionAction => ({
   type: 'SET_RESURRECTION_VERDICT',
   payload: verdict,
+});
+
+export const setGitHistory = (commits: GitCommit[], fileHistories: FileHistory[]): ResurrectionAction => ({
+  type: 'SET_GIT_HISTORY',
+  payload: { commits, fileHistories },
 });
 
 export const resetState = (): ResurrectionAction => ({

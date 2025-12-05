@@ -537,7 +537,7 @@
   
   - [x] 28.3 Create Gemini LLM client
     - Implement GeminiClient class with same interface as LLMClient
-    - Support gemini-pro and gemini-pro-vision models
+    - Support gemini-3-pro-preview model (current recommended model)
     - Implement retry logic with exponential backoff
     - Add timeout handling (30s per request)
     - _Requirements: FR-004, NFR-002_

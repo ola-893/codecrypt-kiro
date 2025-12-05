@@ -18,7 +18,7 @@ This guide helps you diagnose and resolve common issues when resurrecting reposi
 
 **Symptoms:**
 ```
-Error: Gemini API error: 404 - Model 'gemini-1.5-flash' not found
+Error: Gemini API error: 404 - Model not found
 ```
 
 **Causes:**
@@ -28,16 +28,10 @@ Error: Gemini API error: 404 - Model 'gemini-1.5-flash' not found
 
 **Solutions:**
 
-1. **Update to a supported model:**
+1. **Update to the supported model:**
    ```json
    {
-     "codecrypt.geminiModel": "gemini-1.5-flash-latest"
-   }
-   ```
-   Or try the stable model:
-   ```json
-   {
-     "codecrypt.geminiModel": "gemini-pro"
+     "codecrypt.geminiModel": "gemini-3-pro-preview"
    }
    ```
 
@@ -48,10 +42,7 @@ Error: Gemini API error: 404 - Model 'gemini-1.5-flash' not found
 
 3. **Check the model name:**
    - Ensure no typos in the model name
-   - Use one of the officially supported models:
-     - `gemini-1.5-flash-latest` (recommended)
-     - `gemini-1.5-pro`
-     - `gemini-pro` (stable fallback)
+   - Use the officially supported model: `gemini-3-pro-preview` (recommended)
 
 4. **Let the system fall back:**
    - CodeCrypt will automatically try Anthropic if configured
@@ -71,7 +62,7 @@ Gemini (primary) → Anthropic (fallback) → AST-only (final fallback)
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -402,7 +393,7 @@ Recommended settings for reliability:
 ```json
 {
   "codecrypt.llmProvider": "anthropic",
-  "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -431,10 +422,10 @@ If you encounter issues not covered here:
 
 For large repositories:
 
-1. **Use faster models:**
+1. **Use the recommended model:**
    ```json
    {
-     "codecrypt.geminiModel": "gemini-1.5-flash-latest"
+     "codecrypt.geminiModel": "gemini-3-pro-preview"
    }
    ```
 

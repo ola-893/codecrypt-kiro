@@ -34,7 +34,7 @@ interface LLMConfig {
 interface GeminiConfig {
   /** API key for Google Gemini */
   apiKey: string;
-  /** Model to use (default: gemini-3.0-pro) */
+  /** Model to use (default: gemini-3-pro-preview) */
   model?: string;
   /** Request timeout in milliseconds */
   timeout?: number;
@@ -162,7 +162,7 @@ export class GeminiClient {
   constructor(config: GeminiConfig) {
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || 'gemini-3.0-pro', // Default to gemini-3.0-pro
+      model: config.model || 'gemini-3-pro-preview', // Default to gemini-3-pro-preview
       timeout: config.timeout || 60000, // 60 seconds (increased for safety)
       maxRetries: config.maxRetries || 3,
     };
@@ -227,6 +227,22 @@ export class GeminiClient {
         // Don't retry network errors - they won't succeed
         throw new CodeCryptError(
           `Gemini network error (VS Code extension host may block external requests): ${errorMessage}`
+        );
+      }
+      
+      // Check for 404 model not found errors
+      const is404Error = errorMessage.includes('404') || errorMessage.includes('not found');
+      const isModelError = errorMessage.toLowerCase().includes('model') || errorMessage.includes('models/');
+      
+      if (is404Error && isModelError) {
+        logger.error(`Gemini model '${this.config.model}' not found`, error);
+        throw new CodeCryptError(
+          `Gemini model '${this.config.model}' not found. ` +
+          `The configured model is not available in the Gemini API. ` +
+          `Please update to 'gemini-3-pro-preview' in VS Code settings (codecrypt.geminiModel). ` +
+          `You can change the model by opening VS Code settings (Cmd/Ctrl+,), searching for "codecrypt.geminiModel", ` +
+          `and setting it to 'gemini-3-pro-preview'.`,
+          'GEMINI_MODEL_NOT_FOUND'
         );
       }
       
@@ -298,7 +314,7 @@ export async function createLLMClient(context: vscode.ExtensionContext): Promise
   // Get LLM provider from configuration (default to anthropic for backward compatibility)
   const config = vscode.workspace.getConfiguration('codecrypt');
   const provider = config.get<string>('llmProvider', 'anthropic');
-  const geminiModel = config.get<string>('geminiModel', 'gemini-3.0-pro'); // Support custom Gemini model
+  const geminiModel = config.get<string>('geminiModel', 'gemini-3-pro-preview'); // Support custom Gemini model
 
   logger.info(`Creating LLM client for provider: ${provider}`);
 

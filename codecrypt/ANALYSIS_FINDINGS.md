@@ -94,9 +94,9 @@ File 10 (metric_display.js):  27s (success)
 **Option A: Switch to Faster Model**
 ```typescript
 // In llmAnalysis.ts GeminiConfig
-model: config.model || 'gemini-1.5-flash' // Instead of gemini-2.5-pro
+model: config.model || 'gemini-3-pro-preview' // Current default model
 ```
-- **Pros**: 10-20x faster, much cheaper
+- **Pros**: Latest model with improved capabilities
 - **Cons**: Slightly lower quality responses
 - **Expected time**: ~30 seconds for 10 files (vs 516 seconds)
 
@@ -125,7 +125,7 @@ const insights = await Promise.all(
 - **Expected time**: ~250 seconds for 10 files
 
 **Recommended Approach**: Combine A + B
-- Switch to gemini-1.5-flash (10-20x faster)
+- Use gemini-3-pro-preview (current default)
 - Increase timeout to 60 seconds (safety net)
 - **Expected total time**: 30-60 seconds for 10 files
 
@@ -157,7 +157,7 @@ const insights = await Promise.all(
 3. 🔴 Log actual validation errors
 
 ### Phase 2 (Short-term - High Priority)
-1. 🟡 Switch to gemini-1.5-flash
+1. ✅ Using gemini-3-pro-preview (completed)
 2. 🟡 Increase timeout to 60 seconds
 3. 🟡 Add batch execution logging
 
@@ -182,7 +182,7 @@ const insights = await Promise.all(
 
 1. **Investigate batch executor** to understand why no updates are being applied
 2. **Add error logging** to validation loop to see what error persists
-3. **Switch to gemini-1.5-flash** for immediate 10-20x speedup
+3. ✅ **Using gemini-3-pro-preview** (completed)
 4. **Test with a small repository** to verify fixes work end-to-end
 
 ## Testing Plan

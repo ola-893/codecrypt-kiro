@@ -66,12 +66,10 @@
         },
         "codecrypt.geminiModel": {
           "type": "string",
-          "default": "gemini-1.5-flash",
-          "description": "Gemini model to use for code analysis (e.g., gemini-1.5-flash, gemini-3.0-pro)",
+          "default": "gemini-3-pro-preview",
+          "description": "Gemini model to use for code analysis (e.g., gemini-3-pro-preview)",
           "examples": [
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-            "gemini-3.0-pro"
+            "gemini-3-pro-preview"
           ]
         },
         "codecrypt.mcpServers": {

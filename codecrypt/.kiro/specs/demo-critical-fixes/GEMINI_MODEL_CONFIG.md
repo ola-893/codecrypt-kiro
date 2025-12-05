@@ -2,7 +2,7 @@
 
 ## Overview
 
-CodeCrypt now supports configurable Gemini models, allowing you to use different versions of Google's Gemini API including the newer `gemini-3.0-pro` model.
+CodeCrypt now supports configurable Gemini models, allowing you to use different versions of Google's Gemini API including the newer `gemini-3-pro-preview` model.
 
 ## Configuration
 
@@ -18,15 +18,13 @@ You can configure which Gemini model to use via VS Code settings:
 2. **Via settings.json:**
    ```json
    {
-     "codecrypt.geminiModel": "gemini-3.0-pro"
+     "codecrypt.geminiModel": "gemini-3-pro-preview"
    }
    ```
 
 ### Supported Models
 
-- `gemini-1.5-flash` (default) - Fast, efficient model for code analysis
-- `gemini-1.5-pro` - More capable model with better reasoning
-- `gemini-3.0-pro` - Latest model with enhanced capabilities
+- `gemini-3-pro-preview` (default) ⭐ Recommended - Latest model with enhanced capabilities
 
 ### Setting the LLM Provider
 
@@ -35,7 +33,7 @@ To use Gemini instead of Anthropic:
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-3.0-pro"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
@@ -71,19 +69,19 @@ If Gemini fails (network issues, API errors, etc.), CodeCrypt will:
 
 ## Example Usage
 
-For users with `gemini-3.0-pro` API access:
+For users with `gemini-3-pro-preview` API access:
 
 ```json
 {
   "codecrypt.llmProvider": "gemini",
-  "codecrypt.geminiModel": "gemini-3.0-pro"
+  "codecrypt.geminiModel": "gemini-3-pro-preview"
 }
 ```
 
 The system will log which model is being used:
 ```
-[INFO] Using Gemini model: gemini-3.0-pro
-[INFO] Gemini client initialized with model: gemini-3.0-pro
+[INFO] Using Gemini model: gemini-3-pro-preview
+[INFO] Gemini client initialized with model: gemini-3-pro-preview
 ```
 
 ## Troubleshooting
@@ -91,7 +89,7 @@ The system will log which model is being used:
 If you see errors about model not found:
 1. Verify your API key has access to the specified model
 2. Check the model name is spelled correctly
-3. Try falling back to `gemini-1.5-flash-latest` which is widely available
+3. Ensure you're using `gemini-3-pro-preview` which is the current recommended model
 4. Check the logs for detailed error messages
 
 For comprehensive troubleshooting, see:
@@ -101,7 +99,7 @@ For comprehensive troubleshooting, see:
 ## Implementation Details
 
 - Configuration is read from `vscode.workspace.getConfiguration('codecrypt')`
-- Default model is `gemini-1.5-flash-latest` for best compatibility
+- Default model is `gemini-3-pro-preview` for best compatibility
 - Model name is passed to `GoogleGenerativeAI.getGenerativeModel()`
 - The same model is used for all analysis requests in a session
 - Automatic fallback to Anthropic if Gemini fails (when both are configured)

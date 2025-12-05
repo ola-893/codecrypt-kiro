@@ -10,9 +10,12 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import { URLValidator } from './urlValidator';
-import { IURLValidator } from '../types';
+import { IURLValidator, PackageManager } from '../types';
 import { getLogger } from '../utils/logger';
+import { LockfileParser, TransitiveDependency } from './lockfileParser';
+import { PackageReplacementRegistry } from './packageReplacementRegistry';
 
 const logger = getLogger();
 
@@ -34,6 +37,10 @@ export interface DeadUrlHandlingResult {
   action: 'kept' | 'replaced' | 'removed';
   /** Warning message if applicable */
   warning?: string;
+  /** Parent dependency chain (for transitive dependencies) */
+  parentChain?: string[];
+  /** Depth in dependency tree (for transitive dependencies) */
+  depth?: number;
 }
 
 /**
@@ -57,9 +64,13 @@ export interface DeadUrlHandlingSummary {
  */
 export class DeadUrlHandler {
   private urlValidator: IURLValidator;
+  private lockfileParser: LockfileParser;
+  private registry: PackageReplacementRegistry;
 
-  constructor(urlValidator?: IURLValidator) {
+  constructor(urlValidator?: IURLValidator, lockfileParser?: LockfileParser, registry?: PackageReplacementRegistry) {
     this.urlValidator = urlValidator || new URLValidator();
+    this.lockfileParser = lockfileParser || new LockfileParser();
+    this.registry = registry || new PackageReplacementRegistry();
   }
 
   /**
@@ -69,6 +80,44 @@ export class DeadUrlHandler {
     return version.includes('://') || 
            version.startsWith('github:') ||
            version.includes('github.com');
+  }
+
+  /**
+   * Check if URL matches a registry pattern and return replacement
+   * Requirements: 3.2, 3.5
+   */
+  private async checkRegistryPattern(url: string): Promise<{ matched: boolean; replacement?: string; reason?: string }> {
+    // Ensure registry is loaded
+    try {
+      await this.registry.load();
+    } catch (error) {
+      logger.warn('Failed to load package replacement registry', error);
+      return { matched: false };
+    }
+
+    const pattern = this.registry.matchesDeadUrlPattern(url);
+    
+    if (pattern) {
+      logger.info(`URL matches registry pattern: ${pattern.pattern}`);
+      logger.info(`  Reason: ${pattern.reason}`);
+      
+      if (pattern.replacementPackage && pattern.replacementVersion) {
+        // Direct replacement specified
+        return {
+          matched: true,
+          replacement: pattern.replacementVersion,
+          reason: pattern.reason
+        };
+      } else {
+        // Pattern indicates to attempt npm lookup
+        return {
+          matched: true,
+          reason: pattern.reason
+        };
+      }
+    }
+    
+    return { matched: false };
   }
 
   /**
@@ -103,7 +152,66 @@ export class DeadUrlHandler {
       
       logger.info(`Checking URL for ${packageName}: ${version}`);
       
-      // Validate the URL
+      // First, check if URL matches a registry pattern
+      const registryCheck = await this.checkRegistryPattern(version);
+      
+      if (registryCheck.matched) {
+        logger.info(`  ✓ URL matches registry pattern - applying automatic replacement`);
+        
+        if (registryCheck.replacement) {
+          // Direct replacement from registry
+          resolvedViaNpm++;
+          results.push({
+            packageName,
+            deadUrl: version,
+            isUrlDead: true,
+            npmAlternative: registryCheck.replacement,
+            resolved: true,
+            action: 'replaced',
+            warning: `Registry pattern match: ${registryCheck.reason}`
+          });
+          logger.info(`  ✓ Applied registry replacement: ${registryCheck.replacement}`);
+          continue;
+        } else {
+          // Registry indicates to attempt npm lookup without validation
+          logger.info(`  Registry suggests npm lookup for ${packageName}`);
+          deadUrlsFound++;
+          
+          const extractedName = this.urlValidator.extractPackageFromUrl(version);
+          const searchName = extractedName || packageName;
+          
+          logger.info(`  Attempting npm registry lookup for: ${searchName}`);
+          const npmVersion = await this.urlValidator.findNpmAlternative(searchName);
+          
+          if (npmVersion) {
+            resolvedViaNpm++;
+            results.push({
+              packageName,
+              deadUrl: version,
+              isUrlDead: true,
+              npmAlternative: npmVersion,
+              resolved: true,
+              action: 'replaced',
+              warning: `Registry pattern match: ${registryCheck.reason}. Replaced with npm version ${npmVersion}`
+            });
+            logger.info(`  ✓ Found npm alternative: ${npmVersion}`);
+          } else {
+            removed++;
+            results.push({
+              packageName,
+              deadUrl: version,
+              isUrlDead: true,
+              resolved: false,
+              action: 'removed',
+              warning: `Registry pattern match: ${registryCheck.reason}. No npm alternative found.`
+            });
+            logger.warn(`  ✗ No npm alternative found for ${packageName}`);
+          }
+          continue;
+        }
+      }
+      
+      // No registry match - validate the URL normally
       const validationResult = await this.urlValidator.validate(version);
       
       if (validationResult.isValid) {
@@ -271,5 +379,220 @@ export class DeadUrlHandler {
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Handle dead URLs including transitive dependencies from lockfiles
+   * Requirements: 1.2, 1.3, 1.5
+   */
+  async handleDeadUrlsWithTransitive(
+    repoPath: string,
+    directDeps: Map<string, string>
+  ): Promise<DeadUrlHandlingSummary> {
+    logger.info('Starting dead URL detection with transitive dependency analysis');
+    
+    // First, handle direct dependencies
+    const directSummary = await this.handleDeadUrls(repoPath, directDeps);
+    
+    // Then, parse lockfile for transitive dependencies
+    const transitiveDeps = await this.lockfileParser.parseLockfile(repoPath);
+    
+    if (transitiveDeps.length === 0) {
+      logger.info('No transitive URL-based dependencies found in lockfile');
+      return directSummary;
+    }
+    
+    logger.info(`Found ${transitiveDeps.length} transitive URL-based dependencies`);
+    
+    // Sort by depth (deepest first) to handle leaf dependencies before parents
+    const sortedDeps = transitiveDeps.sort((a, b) => b.depth - a.depth);
+    
+    // Process transitive dependencies
+    for (const dep of sortedDeps) {
+      logger.info(`Checking transitive dependency: ${dep.name} at depth ${dep.depth}`);
+      logger.info(`  Resolved URL: ${dep.resolvedUrl}`);
+      
+      // First, check if URL matches a registry pattern
+      const registryCheck = await this.checkRegistryPattern(dep.resolvedUrl);
+      
+      if (registryCheck.matched) {
+        logger.info(`  ✓ URL matches registry pattern - applying automatic replacement`);
+        
+        if (registryCheck.replacement) {
+          // Direct replacement from registry
+          directSummary.resolvedViaNpm++;
+          directSummary.results.push({
+            packageName: dep.name,
+            deadUrl: dep.resolvedUrl,
+            isUrlDead: true,
+            npmAlternative: registryCheck.replacement,
+            resolved: true,
+            action: 'replaced',
+            warning: `Transitive dependency - Registry pattern match: ${registryCheck.reason}`,
+            parentChain: dep.parents,
+            depth: dep.depth
+          });
+          logger.info(`  ✓ Applied registry replacement: ${registryCheck.replacement}`);
+          continue;
+        } else {
+          // Registry indicates to attempt npm lookup without validation
+          logger.info(`  Registry suggests npm lookup for ${dep.name}`);
+          directSummary.deadUrlsFound++;
+          
+          const extractedName = this.urlValidator.extractPackageFromUrl(dep.resolvedUrl);
+          const searchName = extractedName || dep.name;
+          
+          logger.info(`  Attempting npm registry lookup for: ${searchName}`);
+          const npmVersion = await this.urlValidator.findNpmAlternative(searchName);
+          
+          if (npmVersion) {
+            directSummary.resolvedViaNpm++;
+            directSummary.results.push({
+              packageName: dep.name,
+              deadUrl: dep.resolvedUrl,
+              isUrlDead: true,
+              npmAlternative: npmVersion,
+              resolved: true,
+              action: 'replaced',
+              warning: `Transitive dependency - Registry pattern match: ${registryCheck.reason}. Replaced with npm version ${npmVersion}`,
+              parentChain: dep.parents,
+              depth: dep.depth
+            });
+            logger.info(`  ✓ Found npm alternative: ${npmVersion}`);
+          } else {
+            directSummary.removed++;
+            directSummary.results.push({
+              packageName: dep.name,
+              deadUrl: dep.resolvedUrl,
+              isUrlDead: true,
+              resolved: false,
+              action: 'removed',
+              warning: `Transitive dependency - Registry pattern match: ${registryCheck.reason}. No npm alternative found.`,
+              parentChain: dep.parents,
+              depth: dep.depth
+            });
+            logger.warn(`  ✗ No npm alternative found for ${dep.name}`);
+          }
+          continue;
+        }
+      }
+      
+      // No registry match - validate the URL normally
+      const validationResult = await this.urlValidator.validate(dep.resolvedUrl);
+      
+      if (validationResult.isValid) {
+        logger.info(`  ✓ URL is accessible for ${dep.name}`);
+        continue;
+      }
+      
+      // URL is dead
+      directSummary.deadUrlsFound++;
+      logger.warn(`  ✗ Dead URL detected for transitive dependency ${dep.name}`);
+      
+      // Try to find npm alternative
+      const extractedName = this.urlValidator.extractPackageFromUrl(dep.resolvedUrl);
+      const searchName = extractedName || dep.name;
+      
+      logger.info(`  Attempting npm registry lookup for: ${searchName}`);
+      const npmVersion = await this.urlValidator.findNpmAlternative(searchName);
+      
+      if (npmVersion) {
+        // Found npm alternative
+        directSummary.resolvedViaNpm++;
+        directSummary.results.push({
+          packageName: dep.name,
+          deadUrl: dep.resolvedUrl,
+          isUrlDead: true,
+          npmAlternative: npmVersion,
+          resolved: true,
+          action: 'replaced',
+          warning: `Transitive dependency: Replaced dead URL with npm registry version ${npmVersion}`,
+          parentChain: dep.parents,
+          depth: dep.depth
+        });
+        logger.info(`  ✓ Found npm alternative: ${npmVersion}`);
+      } else {
+        // No npm alternative found
+        directSummary.removed++;
+        directSummary.results.push({
+          packageName: dep.name,
+          deadUrl: dep.resolvedUrl,
+          isUrlDead: true,
+          resolved: false,
+          action: 'removed',
+          warning: `Transitive dependency: Dead URL could not be resolved. Lockfile regeneration required.`,
+          parentChain: dep.parents,
+          depth: dep.depth
+        });
+        logger.warn(`  ✗ No npm alternative found for ${dep.name}`);
+      }
+    }
+    
+    directSummary.totalChecked += transitiveDeps.length;
+    
+    logger.info('Dead URL handling with transitive dependencies complete:');
+    logger.info(`  Total checked: ${directSummary.totalChecked}`);
+    logger.info(`  Dead URLs found: ${directSummary.deadUrlsFound}`);
+    logger.info(`  Resolved via npm: ${directSummary.resolvedViaNpm}`);
+    logger.info(`  Removed: ${directSummary.removed}`);
+    
+    return directSummary;
+  }
+
+  /**
+   * Regenerate lockfile after resolving dead URLs
+   * Requirements: 4.1, 4.2, 4.3
+   */
+  async regenerateLockfile(repoPath: string, packageManager: PackageManager = 'npm'): Promise<void> {
+    logger.info('Regenerating lockfile after dead URL resolution');
+    
+    try {
+      // Delete all existing lockfiles
+      await this.lockfileParser.deleteLockfiles(repoPath);
+      
+      // Run npm install to regenerate lockfile
+      logger.info(`Running ${packageManager} install to regenerate lockfile`);
+      
+      await new Promise<void>((resolve, reject) => {
+        const command = packageManager === 'yarn' ? 'yarn' : packageManager === 'pnpm' ? 'pnpm' : 'npm';
+        const args = packageManager === 'yarn' ? ['install'] : ['install', '--legacy-peer-deps'];
+        
+        const child = spawn(command, args, {
+          cwd: repoPath,
+          shell: true,
+          stdio: 'pipe'
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        child.stdout?.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        child.stderr?.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        child.on('close', (code) => {
+          if (code === 0) {
+            logger.info('Lockfile regenerated successfully');
+            resolve();
+          } else {
+            logger.error(`Lockfile regeneration failed with exit code ${code}`);
+            logger.error(`stderr: ${stderr}`);
+            reject(new Error(`Lockfile regeneration failed: ${stderr}`));
+          }
+        });
+        
+        child.on('error', (error) => {
+          logger.error('Failed to spawn npm install process', error);
+          reject(error);
+        });
+      });
+    } catch (error) {
+      logger.error('Lockfile regeneration failed, continuing without it', error);
+      // Don't throw - we want to continue even if lockfile regeneration fails
+    }
   }
 }
