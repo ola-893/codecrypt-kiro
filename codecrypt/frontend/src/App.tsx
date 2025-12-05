@@ -25,11 +25,7 @@ import './styles/App.css';
 function App() {
   const { dispatch, state } = useResurrection();
   const [isInitializing, setIsInitializing] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
-  
-  // Detect if we're in production (Netlify) or development
-  const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   
   // Handle audio initialization on user click
   const handleEnableAudio = async () => {
@@ -43,21 +39,16 @@ function App() {
     }
   };
   
-  // Connect to SSE endpoint - try real backend first, fallback to demo
+  // Connect to SSE endpoint
   const { events, isConnected, error } = useEventSource({
-    url: 'http://localhost:3000/events', // Always try to connect to backend
+    url: 'http://localhost:3000/events',
     reconnectInterval: 3000,
-    maxReconnectAttempts: 2, // Try a couple times before giving up
+    maxReconnectAttempts: 3,
     onOpen: () => {
       console.log('SSE connection established - connected to live backend!');
-      setDemoMode(false); // Disable demo mode when connected
     },
     onError: (err) => {
-      console.warn('SSE connection error - will fallback to demo mode', err);
-      // Switch to demo mode after connection fails
-      if (!demoMode) {
-        setTimeout(() => setDemoMode(true), 1000);
-      }
+      console.warn('SSE connection error:', err);
     },
     onClose: () => {
       console.log('SSE connection closed');
@@ -79,66 +70,6 @@ function App() {
     }, 800);
     return () => clearTimeout(timer);
   }, []);
-
-  // Load demo data only when in demo mode
-  useEffect(() => {
-    if (demoMode) {
-      console.log('Demo mode activated - loading demo data...');
-      fetch('/demo-data.json')
-        .then(res => res.json())
-        .then(data => {
-          console.log('Loading demo data...');
-          // Simulate events coming in over time
-          let eventIndex = 0;
-          const interval = setInterval(() => {
-            if (eventIndex < data.events.length) {
-              const event = data.events[eventIndex];
-              
-              switch (event.type) {
-                case 'metric_updated':
-                  // Ensure all required fields are present with defaults
-                  const metrics: MetricsSnapshot = {
-                    timestamp: event.data.timestamp || Date.now(),
-                    depsUpdated: event.data.depsUpdated || event.data.dependenciesUpdated || 0,
-                    vulnsFixed: event.data.vulnsFixed || event.data.vulnerabilities || 0,
-                    complexity: event.data.complexity || 0,
-                    coverage: event.data.coverage || 0,
-                    loc: event.data.loc || event.data.linesOfCode || 0,
-                    progress: event.data.progress || (event.data.depsUpdated / event.data.totalDependencies) || 0
-                  };
-                  dispatch(updateMetrics(metrics));
-                  break;
-                case 'transformation_applied':
-                  dispatch(addTransformation(event.data as TransformationEvent));
-                  break;
-                case 'narration':
-                  dispatch(addNarration(event.data as NarrationEvent));
-                  break;
-                case 'ast_analysis_complete':
-                  dispatch(setASTAnalysis(event.data as ASTAnalysisResult));
-                  break;
-                case 'llm_insight':
-                  dispatch(addLLMInsight(event.data as LLMInsight));
-                  break;
-                case 'validation_complete':
-                  dispatch(setValidationResult(event.data as ValidationResult));
-                  break;
-              }
-              
-              eventIndex++;
-            } else {
-              clearInterval(interval);
-              dispatch(setConnected(true));
-            }
-          }, 1500); // Event every 1.5 seconds
-          
-          return () => clearInterval(interval);
-        })
-        .catch(err => {
-          console.error('Failed to load demo data:', err);
-        });
-    }
-  }, [demoMode, dispatch]);
 
   // Process incoming events
   useEffect(() => {
@@ -197,59 +128,130 @@ function App() {
         <h1>🧟 CodeCrypt</h1>
         <p className="tagline">Resurrection Dashboard</p>
         <div className="connection-status">
-          {demoMode ? (
-            <span className="status-demo" title="Demo mode - using sample data" aria-label="Demo Mode">
-              ● Demo Mode
-            </span>
-          ) : isConnected ? (
+          {isConnected ? (
             <span className="status-connected" title="Connected to live backend on localhost:3000" aria-label="Connected">
               ● Live Connected
             </span>
           ) : (
             <span className="status-disconnected" title="Waiting for backend connection" aria-label="Disconnected">
-              ○ Connecting...
+              ○ Disconnected
             </span>
           )}
         </div>
-        {error && !demoMode && (
-          <div className="connection-error" role="alert">
-            <strong>Backend Connection:</strong> {error}
-            <br />
-            <small>Start a resurrection from VS Code to see live updates, or demo mode will activate automatically.</small>
-          </div>
-        )}
       </header>
       <main className="app-main">
-        {!isConnected && !error && !demoMode && (
-          <div className="waiting-message">
-            <div className="pulse-icon">⏳</div>
-            <p>Connecting to backend server...</p>
-            <small>Start a resurrection from VS Code to see live updates</small>
-          </div>
-        )}
-        
-        {/* Audio enable button - only show if audio not enabled yet */}
-        {!audioEnabled && (demoMode || isConnected) && (
-          <div className="audio-prompt">
-            <button onClick={handleEnableAudio} className="audio-enable-btn">
-              🔊 Enable Audio Experience
-            </button>
-            <small>Click to enable narration and symphony</small>
-          </div>
-        )}
+        {!isConnected ? (
+          <div className="instructions-container">
+            <div className="instructions-card">
+              <h2>🪦 Welcome to CodeCrypt</h2>
+              <p className="intro">
+                CodeCrypt brings dead code back to life by automatically modernizing dependencies, 
+                fixing vulnerabilities, and updating deprecated APIs.
+              </p>
+              
+              <div className="how-it-works">
+                <h3>⚡ How It Works</h3>
+                <ol className="steps-list">
+                  <li>
+                    <strong>Death Detection:</strong> Analyzes your repository to identify outdated dependencies, 
+                    security vulnerabilities, and deprecated code patterns.
+                  </li>
+                  <li>
+                    <strong>Hybrid Analysis:</strong> Combines AST parsing with AI to understand your code's 
+                    structure and intent.
+                  </li>
+                  <li>
+                    <strong>Resurrection Planning:</strong> Creates a detailed modernization plan with 
+                    step-by-step transformations.
+                  </li>
+                  <li>
+                    <strong>Automated Resurrection:</strong> Applies updates, runs tests, and validates 
+                    changes in real-time.
+                  </li>
+                  <li>
+                    <strong>Live Visualization:</strong> Watch the resurrection unfold with real-time metrics, 
+                    3D code city, and AI narration.
+                  </li>
+                </ol>
+              </div>
 
-        <Dashboard />
+              <div className="getting-started">
+                <h3>🚀 Getting Started</h3>
+                <div className="step-box">
+                  <div className="step-number">1</div>
+                  <div className="step-content">
+                    <h4>Open VS Code</h4>
+                    <p>Make sure you have the CodeCrypt extension installed</p>
+                  </div>
+                </div>
+                <div className="step-box">
+                  <div className="step-number">2</div>
+                  <div className="step-content">
+                    <h4>Run the Command</h4>
+                    <p>Press <code>Cmd+Shift+P</code> (Mac) or <code>Ctrl+Shift+P</code> (Windows/Linux)</p>
+                    <p>Type: <code>CodeCrypt: Resurrect Repository</code></p>
+                  </div>
+                </div>
+                <div className="step-box">
+                  <div className="step-number">3</div>
+                  <div className="step-content">
+                    <h4>Enter GitHub URL</h4>
+                    <p>Provide the URL of the repository you want to resurrect</p>
+                    <p className="example">Example: <code>https://github.com/user/old-project</code></p>
+                  </div>
+                </div>
+                <div className="step-box">
+                  <div className="step-number">4</div>
+                  <div className="step-content">
+                    <h4>Watch the Magic</h4>
+                    <p>This dashboard will come alive with real-time updates, metrics, and visualizations!</p>
+                  </div>
+                </div>
+              </div>
 
-        {/* Ghost Tour - 3D Code Visualization */}
-        {state.fileHistories.length > 0 && (
-          <div className="ghost-tour-container">
-            <h2 className="section-title">🏙️ 3D Code City - Ghost Tour</h2>
-            <p className="section-subtitle">Explore the codebase evolution in 3D</p>
-            <GhostTour 
-              fileHistories={state.fileHistories}
-              gitCommits={state.gitCommits}
-            />
+              <div className="features-preview">
+                <h3>✨ What You'll See</h3>
+                <ul className="features-list">
+                  <li>📊 <strong>Live Metrics Dashboard</strong> - Real-time charts showing progress</li>
+                  <li>🏙️ <strong>3D Ghost Tour</strong> - Interactive code city visualization</li>
+                  <li>🎙️ <strong>AI Narration</strong> - Voice explaining each step</li>
+                  <li>🎵 <strong>Resurrection Symphony</strong> - Music that evolves with code quality</li>
+                  <li>✅ <strong>Compilation Status</strong> - Before/after comparison</li>
+                </ul>
+              </div>
+
+              <div className="waiting-indicator">
+                <div className="pulse-icon">⏳</div>
+                <p>Waiting for resurrection to begin...</p>
+              </div>
+            </div>
           </div>
+        ) : (
+          <>
+            {/* Audio enable button - only show if audio not enabled yet */}
+            {!audioEnabled && (
+              <div className="audio-prompt">
+                <button onClick={handleEnableAudio} className="audio-enable-btn">
+                  🔊 Enable Audio Experience
+                </button>
+                <small>Click to enable narration and symphony</small>
+              </div>
+            )}
+
+            <Dashboard />
+
+            {/* Ghost Tour - 3D Code Visualization */}
+            {state.fileHistories.length > 0 && (
+              <div className="ghost-tour-container">
+                <h2 className="section-title">🏙️ 3D Code City - Ghost Tour</h2>
+                <p className="section-subtitle">Explore the codebase evolution in 3D</p>
+                <GhostTour 
+                  fileHistories={state.fileHistories}
+                  gitCommits={state.gitCommits}
+                />
+              </div>
+            )}
+          </>
         )}
       </main>
       {/* AI Narrator - headless component for audio narration */}
